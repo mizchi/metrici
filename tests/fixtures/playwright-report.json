@@ -1,0 +1,63 @@
+{
+  "config": {
+    "projects": [{ "name": "chromium" }, { "name": "firefox" }]
+  },
+  "suites": [
+    {
+      "title": "login.spec.ts",
+      "file": "tests/login.spec.ts",
+      "suites": [
+        {
+          "title": "login page",
+          "specs": [
+            {
+              "title": "should display form",
+              "tests": [
+                {
+                  "projectName": "chromium",
+                  "results": [{ "status": "passed", "duration": 1200, "retry": 0 }],
+                  "status": "expected"
+                }
+              ]
+            },
+            {
+              "title": "should redirect after login",
+              "tests": [
+                {
+                  "projectName": "chromium",
+                  "results": [
+                    { "status": "failed", "duration": 3000, "retry": 0, "error": { "message": "Timeout" } },
+                    { "status": "passed", "duration": 1500, "retry": 1 }
+                  ],
+                  "status": "flaky"
+                }
+              ]
+            },
+            {
+              "title": "should show error on invalid credentials",
+              "tests": [
+                {
+                  "projectName": "chromium",
+                  "results": [
+                    { "status": "failed", "duration": 2000, "retry": 0, "error": { "message": "Element not found" } }
+                  ],
+                  "status": "unexpected"
+                }
+              ]
+            },
+            {
+              "title": "should skip on mobile",
+              "tests": [
+                {
+                  "projectName": "chromium",
+                  "results": [{ "status": "skipped", "duration": 0, "retry": 0 }],
+                  "status": "skipped"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
