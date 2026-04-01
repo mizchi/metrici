@@ -15,7 +15,7 @@ describe("Phase 2 integration", () => {
       await store.insertWorkflowRun({
         id: i + 1, repo: "test/repo", branch: "main", commitSha: `sha${i + 1}`,
         event: "push", status: "completed",
-        createdAt: new Date(2026, 2, i + 1), durationMs: 60000,
+        createdAt: new Date(Date.now() - (5 - i) * 86400000), durationMs: 60000,
       });
     }
     for (let run = 0; run < 5; run++) {
@@ -26,7 +26,7 @@ describe("Phase 2 integration", () => {
           workflowRunId: run + 1, suite: `tests/module_${t}/test.spec.ts`, testName: `test_${t}`,
           status: isFailing ? "failed" : "passed",
           durationMs: 100, retryCount: 0, errorMessage: isFailing ? "Timeout" : null,
-          commitSha: `sha${run + 1}`, variant: null, createdAt: new Date(2026, 2, run + 1),
+          commitSha: `sha${run + 1}`, variant: null, createdAt: new Date(Date.now() - (5 - run) * 86400000),
         }]);
       }
     }
