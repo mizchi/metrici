@@ -153,23 +153,48 @@ program
 program
   .command("sample")
   .description("Sample tests for selective execution")
-  .option("--strategy <s>", "Sampling strategy: random or weighted", "random")
+  .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid", "random")
   .option("--count <n>", "Number of tests to sample")
   .option("--percentage <n>", "Percentage of tests to sample")
   .option("--skip-quarantined", "Exclude quarantined tests")
+  .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
   .action(
-    async (opts: { strategy: string; count?: string; percentage?: string; skipQuarantined?: boolean }) => {
+    async (opts: { strategy: string; count?: string; percentage?: string; skipQuarantined?: boolean; changed?: string }) => {
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
       try {
+        const changedFiles = opts.changed?.split(",").map(f => f.trim()).filter(Boolean);
+        const mode = opts.strategy as "random" | "weighted" | "affected" | "hybrid";
+
+        // Create resolver from config for affected/hybrid
+        let resolver;
+        if ((mode === "affected" || mode === "hybrid") && changedFiles?.length) {
+          const resolverType = config.affected.resolver ?? "simple";
+          if (resolverType === "bitflow" && config.affected.config) {
+            const { BitflowNativeResolver } = await import("./resolvers/bitflow-native.js");
+            resolver = new BitflowNativeResolver(resolve(config.affected.config));
+          } else if (resolverType === "workspace") {
+            const { WorkspaceResolver } = await import("./resolvers/workspace.js");
+            resolver = new WorkspaceResolver(process.cwd());
+          } else if (resolverType === "moon") {
+            const { MoonResolver } = await import("./resolvers/moon.js");
+            resolver = new MoonResolver(process.cwd());
+          } else {
+            const { SimpleResolver } = await import("./resolvers/simple.js");
+            resolver = new SimpleResolver();
+          }
+        }
+
         const sampled = await runSample({
           store,
-          mode: opts.strategy as "random" | "weighted",
+          mode,
           count: opts.count ? Number(opts.count) : undefined,
           percentage: opts.percentage ? Number(opts.percentage) : undefined,
           skipQuarantined: opts.skipQuarantined,
+          resolver,
+          changedFiles,
         });
         for (const t of sampled) {
           console.log(`${t.suite} > ${t.test_name}`);

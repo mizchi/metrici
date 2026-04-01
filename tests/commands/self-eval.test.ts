@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 30000 });
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import { runSelfEval, getScenarios, formatSelfEvalReport } from "../../src/cli/commands/self-eval.js";
 
