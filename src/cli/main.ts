@@ -14,6 +14,7 @@ import { runTests } from "./commands/run.js";
 import { ActrunRunner } from "./runners/actrun.js";
 import { runBisect } from "./commands/bisect.js";
 import { runImport } from "./commands/import.js";
+import { runCollectLocal } from "./commands/collect-local.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
@@ -201,7 +202,53 @@ program
           if (opts.retry) {
             actRunner.retry();
           } else {
-            actRunner.run("");
+            const result = actRunner.runWithResult();
+            // Auto-import results
+            const { actrunAdapter } = await import("./adapters/actrun.js");
+            const testCases = actrunAdapter.parse(JSON.stringify({
+              run_id: result.runId,
+              conclusion: result.conclusion,
+              headSha: result.headSha,
+              headBranch: result.headBranch,
+              startedAt: result.startedAt,
+              completedAt: result.completedAt,
+              status: "completed",
+              tasks: result.tasks.map((t) => ({
+                id: t.id, kind: "run", status: t.status, code: t.code, shell: "bash",
+                stdout_path: t.stdoutPath, stderr_path: t.stderrPath,
+              })),
+              steps: [],
+            }));
+            if (testCases.length > 0) {
+              const runId = Date.now();
+              await store.insertWorkflowRun({
+                id: runId,
+                repo: `${config.repo.owner}/${config.repo.name}`,
+                branch: result.headBranch,
+                commitSha: result.headSha,
+                event: "actrun-run",
+                status: result.conclusion,
+                createdAt: new Date(result.startedAt),
+                durationMs: result.durationMs,
+              });
+              await store.insertTestResults(testCases.map((tc) => ({
+                workflowRunId: runId,
+                suite: tc.suite,
+                testName: tc.testName,
+                status: tc.status,
+                durationMs: tc.durationMs,
+                retryCount: tc.retryCount,
+                errorMessage: tc.errorMessage ?? null,
+                commitSha: result.headSha,
+                variant: tc.variant ?? null,
+                createdAt: new Date(result.startedAt),
+              })));
+              console.log(`Imported ${testCases.length} test results from actrun run ${result.runId}`);
+            }
+            // Run eval mini-report
+            const { runEval, formatEvalReport } = await import("./commands/eval.js");
+            const evalReport = await runEval({ store });
+            console.log(formatEvalReport(evalReport));
           }
           return;
         }
@@ -372,6 +419,31 @@ program
         console.log(`First bad commit: ${result.firstBadCommit} (${result.firstBadDate.toISOString()})`);
       } else {
         console.log("No transition found.");
+      }
+    } finally {
+      await store.close();
+    }
+  });
+
+// --- collect-local ---
+program
+  .command("collect-local")
+  .description("Import actrun local run history into metrici")
+  .option("--last <n>", "Import only last N runs")
+  .action(async (opts: { last?: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const result = await runCollectLocal({
+        store,
+        last: opts.last ? Number(opts.last) : undefined,
+      });
+      console.log(`Imported ${result.runsImported} runs, ${result.testsImported} test results`);
+      if (result.runsImported > 0) {
+        const { runEval, formatEvalReport } = await import("./commands/eval.js");
+        const evalReport = await runEval({ store });
+        console.log(formatEvalReport(evalReport));
       }
     } finally {
       await store.close();
