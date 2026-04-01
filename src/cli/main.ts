@@ -19,6 +19,7 @@ import {
   runQuarantine,
   formatQuarantineTable,
 } from "./commands/quarantine.js";
+import { runEval, formatEvalReport } from "./commands/eval.js";
 import { DuckDBStore } from "./storage/duckdb.js";
 
 const program = new Command();
@@ -301,6 +302,27 @@ program
       }
     },
   );
+
+// --- eval ---
+program
+  .command("eval")
+  .description("Evaluate test suite health and metrici effectiveness")
+  .option("--json", "Output raw JSON report")
+  .action(async (opts: { json?: boolean }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const report = await runEval({ store, windowDays: config.flaky.window_days });
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(formatEvalReport(report));
+      }
+    } finally {
+      await store.close();
+    }
+  });
 
 // --- import ---
 program
