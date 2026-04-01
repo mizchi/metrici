@@ -3,16 +3,16 @@ import { loadCore } from "../../src/cli/core/loader.js";
 import type { DetectInput, TestMeta } from "../../src/cli/core/loader.js";
 
 describe("loadCore", () => {
-  it("returns defined object with all functions", () => {
-    const core = loadCore();
+  it("returns defined object with all functions", async () => {
+    const core = await loadCore();
     expect(core).toBeDefined();
     expect(typeof core.detectFlaky).toBe("function");
     expect(typeof core.sampleRandom).toBe("function");
     expect(typeof core.sampleWeighted).toBe("function");
   });
 
-  it("detectFlaky returns correct results", () => {
-    const core = loadCore();
+  it("detectFlaky returns correct results", async () => {
+    const core = await loadCore();
     const input: DetectInput = {
       results: [
         { suite: "auth", test_name: "login", status: "failed", retry_count: 0 },
@@ -34,8 +34,8 @@ describe("loadCore", () => {
     expect(result.fail_count).toBe(3);
   });
 
-  it("sampleRandom returns correct count", () => {
-    const core = loadCore();
+  it("sampleRandom returns correct count", async () => {
+    const core = await loadCore();
     const meta: TestMeta[] = Array.from({ length: 10 }, (_, i) => ({
       suite: "s",
       test_name: `t${i}`,
@@ -54,8 +54,8 @@ describe("loadCore", () => {
     expect(result2).toEqual(result);
   });
 
-  it("sampleWeighted prefers flaky tests", () => {
-    const core = loadCore();
+  it("sampleWeighted prefers flaky tests", async () => {
+    const core = await loadCore();
     const meta: TestMeta[] = [
       {
         suite: "s",

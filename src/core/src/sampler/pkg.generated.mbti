@@ -1,0 +1,20 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mizchi/metrici_core/src/sampler"
+
+import {
+  "mizchi/metrici_core/src/types",
+}
+
+// Values
+pub fn sample_random(Array[@types.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@types.TestMeta]
+
+pub fn sample_weighted(Array[@types.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@types.TestMeta]
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

@@ -1,0 +1,55 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mizchi/metrici_core/src/types"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct DetectInput {
+  results : Array[TestRunEntry]
+  threshold : Double
+  min_runs : Int
+} derive(ToJson, @json.FromJson)
+
+pub(all) struct DetectOutput {
+  flaky_tests : Array[FlakyResult]
+} derive(Eq, Show, ToJson, @json.FromJson)
+
+pub(all) struct FlakyResult {
+  suite : String
+  test_name : String
+  flaky_rate : Double
+  total_runs : Int
+  fail_count : Int
+  flaky_retry_count : Int
+  is_quarantined : Bool
+} derive(Eq, Show, ToJson, @json.FromJson)
+
+pub(all) struct TestMeta {
+  suite : String
+  test_name : String
+  flaky_rate : Double
+  total_runs : Int
+  fail_count : Int
+  last_run_at : String
+  avg_duration_ms : Int
+  previously_failed : Bool
+  is_new : Bool
+} derive(Eq, Show, ToJson, @json.FromJson)
+
+pub(all) struct TestRunEntry {
+  suite : String
+  test_name : String
+  status : String
+  retry_count : Int
+} derive(ToJson, @json.FromJson)
+
+// Type aliases
+
+// Traits
+

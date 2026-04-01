@@ -32,23 +32,23 @@ pub fn detect_flaky(input : @types.DetectInput) -> @types.DetectOutput {
     if agg.total < input.min_runs {
       return
     }
-    let flaky_rate = (agg.fail_count.to_double() + agg.flaky_retry_count.to_double()) /
+    let flaky_rate = (
+        agg.fail_count.to_double() + agg.flaky_retry_count.to_double()
+      ) /
       agg.total.to_double() *
       100.0
     if flaky_rate < input.threshold {
       return
     }
-    results.push(
-      @types.FlakyResult::{
-        suite: key.suite,
-        test_name: key.test_name,
-        flaky_rate,
-        total_runs: agg.total,
-        fail_count: agg.fail_count,
-        flaky_retry_count: agg.flaky_retry_count,
-        is_quarantined: false,
-      },
-    )
+    results.push(@types.FlakyResult::{
+      suite: key.suite,
+      test_name: key.test_name,
+      flaky_rate,
+      total_runs: agg.total,
+      fail_count: agg.fail_count,
+      flaky_retry_count: agg.flaky_retry_count,
+      is_quarantined: false,
+    })
   })
   results.sort_by(fn(a, b) {
     if a.flaky_rate > b.flaky_rate {

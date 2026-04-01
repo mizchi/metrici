@@ -11,7 +11,7 @@ export interface SampleOpts {
 }
 
 export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
-  const core = loadCore();
+  const core = await loadCore();
   const allTests = await buildTestMeta(opts.store);
 
   let count: number;

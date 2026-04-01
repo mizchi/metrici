@@ -1,0 +1,20 @@
+import {
+  "mizchi/metrici_core/src/types",
+  "mizchi/metrici_core/src/flaky_detector",
+  "mizchi/metrici_core/src/sampler",
+  "moonbitlang/core/json",
+}
+
+options(
+  "is-main": true,
+  link: {
+    "js": {
+      "exports": [
+        "detect_flaky_json",
+        "sample_random_json",
+        "sample_weighted_json",
+      ],
+      "format": "esm",
+    },
+  },
+)

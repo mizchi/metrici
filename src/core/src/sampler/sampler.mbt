@@ -7,7 +7,7 @@ fn lcg_next(state : UInt64) -> UInt64 {
 pub fn sample_random(
   meta : Array[@types.TestMeta],
   count~ : Int,
-  seed~ : UInt64
+  seed~ : UInt64,
 ) -> Array[@types.TestMeta] {
   let n = meta.length()
   if n == 0 {
@@ -30,7 +30,7 @@ pub fn sample_random(
 pub fn sample_weighted(
   meta : Array[@types.TestMeta],
   count~ : Int,
-  seed~ : UInt64
+  seed~ : UInt64,
 ) -> Array[@types.TestMeta] {
   let n = meta.length()
   if n == 0 {
@@ -52,7 +52,8 @@ pub fn sample_weighted(
     }
     // Generate random value in [0, total_weight)
     state = lcg_next(state)
-    let rand_val = (state % 1000000UL).to_int().to_double() / 1000000.0 *
+    let rand_val = (state % 1000000UL).to_int().to_double() /
+      1000000.0 *
       total_weight
     // Select based on cumulative weight
     let mut cumulative = 0.0

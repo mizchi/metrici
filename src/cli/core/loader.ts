@@ -138,7 +138,58 @@ function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta
   return result;
 }
 
-export function loadCore(): MetriciCore {
+// MoonBit JS backend types
+interface MbtJsExports {
+  detect_flaky_json: (input: string) => string;
+  sample_random_json: (meta: string, count: number, seed: number) => string;
+  sample_weighted_json: (meta: string, count: number, seed: number) => string;
+}
+
+function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
+  return {
+    detectFlaky(input: DetectInput): DetectOutput {
+      return JSON.parse(mbt.detect_flaky_json(JSON.stringify(input)));
+    },
+    sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+      return JSON.parse(mbt.sample_random_json(JSON.stringify(meta), count, seed));
+    },
+    sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+      return JSON.parse(mbt.sample_weighted_json(JSON.stringify(meta), count, seed));
+    },
+  };
+}
+
+let cachedCore: MetriciCore | undefined;
+
+export async function loadCore(): Promise<MetriciCore> {
+  if (cachedCore) return cachedCore;
+  try {
+    const mbtPath = new URL(
+      "../../../src/core/_build/js/debug/build/src/main/main.js",
+      import.meta.url,
+    ).href;
+    const mbt = (await import(mbtPath)) as MbtJsExports;
+    if (
+      typeof mbt.detect_flaky_json === "function" &&
+      typeof mbt.sample_random_json === "function" &&
+      typeof mbt.sample_weighted_json === "function"
+    ) {
+      cachedCore = wrapMbtCore(mbt);
+      return cachedCore;
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation
+  }
+  cachedCore = {
+    detectFlaky,
+    sampleRandom,
+    sampleWeighted,
+  };
+  return cachedCore;
+}
+
+/** Synchronous fallback for contexts where async is not possible */
+export function loadCoreSync(): MetriciCore {
   return {
     detectFlaky,
     sampleRandom,

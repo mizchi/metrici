@@ -15,7 +15,9 @@ fn make_test_meta(name : String, flaky_rate : Double) -> @types.TestMeta {
 
 ///|
 test "random sampling selects correct count" {
-  let items = Array::makei(20, fn(i) { make_test_meta("test_" + i.to_string(), 0.0) })
+  let items = Array::makei(20, fn(i) {
+    make_test_meta("test_" + i.to_string(), 0.0)
+  })
   let result = @sampler.sample_random(items, count=5, seed=42UL)
   assert_eq(result.length(), 5)
 }
