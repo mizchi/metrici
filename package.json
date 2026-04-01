@@ -17,11 +17,13 @@
   "packageManager": "pnpm@10.27.0",
   "dependencies": {
     "@octokit/rest": "^22.0.1",
+    "adm-zip": "^0.5.16",
     "commander": "^14.0.3",
     "duckdb": "^1.4.4",
     "smol-toml": "^1.6.1"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",

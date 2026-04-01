@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import AdmZip from "adm-zip";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import type { MetricStore } from "../../src/cli/storage/types.js";
 import {
@@ -35,7 +36,9 @@ function createMockGitHubClient(
       };
     },
     async downloadArtifact(_artifactId: number) {
-      return reportContent;
+      const zip = new AdmZip();
+      zip.addFile("report.json", Buffer.from(reportContent));
+      return zip.toBuffer();
     },
   };
 }

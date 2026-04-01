@@ -1,3 +1,4 @@
+import AdmZip from "adm-zip";
 import { CustomAdapter } from "../adapters/custom.js";
 import { junitAdapter } from "../adapters/junit.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
@@ -22,7 +23,7 @@ export interface GitHubClient {
     total_count: number;
     artifacts: Array<{ id: number; name: string; expired: boolean }>;
   }>;
-  downloadArtifact(artifactId: number): Promise<string>;
+  downloadArtifact(artifactId: number): Promise<Buffer>;
 }
 
 export interface CollectOpts {
@@ -111,8 +112,33 @@ export async function collectWorkflowRuns(
       continue;
     }
 
-    // Download and parse
-    const reportContent = await github.downloadArtifact(artifact.id);
+    // Download and extract zip
+    const zipBuffer = await github.downloadArtifact(artifact.id);
+    const zip = new AdmZip(zipBuffer);
+    const entries = zip.getEntries();
+
+    // Find the report file in the zip
+    let reportContent: string | null = null;
+    for (const entry of entries) {
+      const name = entry.entryName.toLowerCase();
+      if (adapterType === "playwright" && (name.endsWith(".json") || name.includes("report"))) {
+        reportContent = entry.getData().toString("utf-8");
+        break;
+      }
+      if (adapterType === "junit" && name.endsWith(".xml")) {
+        reportContent = entry.getData().toString("utf-8");
+        break;
+      }
+      // For custom or unknown, take the first file
+      if (!reportContent) {
+        reportContent = entry.getData().toString("utf-8");
+      }
+    }
+    if (!reportContent) {
+      runsCollected++;
+      continue;
+    }
+
     const testCases = adapter.parse(reportContent);
 
     const testResults: TestResult[] = testCases.map((tc) => ({

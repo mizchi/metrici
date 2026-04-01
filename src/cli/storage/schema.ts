@@ -44,9 +44,9 @@ SELECT
   suite, test_name, variant,
   COUNT(*)::INTEGER AS total_runs,
   COUNT(*) FILTER (WHERE status = 'failed')::INTEGER AS fail_count,
-  COUNT(*) FILTER (WHERE retry_count > 0 AND status = 'passed')::INTEGER AS flaky_retry_count,
-  ROUND((COUNT(*) FILTER (WHERE status = 'failed') + COUNT(*) FILTER (WHERE retry_count > 0 AND status = 'passed')) * 100.0 / COUNT(*), 2)::DOUBLE AS flaky_rate,
-  MAX(created_at) FILTER (WHERE status = 'failed') AS last_flaky_at,
+  COUNT(*) FILTER (WHERE status = 'flaky' OR (retry_count > 0 AND status = 'passed'))::INTEGER AS flaky_retry_count,
+  ROUND((COUNT(*) FILTER (WHERE status IN ('failed', 'flaky') OR (retry_count > 0 AND status = 'passed')) ) * 100.0 / COUNT(*), 2)::DOUBLE AS flaky_rate,
+  MAX(created_at) FILTER (WHERE status IN ('failed', 'flaky')) AS last_flaky_at,
   MIN(created_at) AS first_seen_at
 FROM recent
 GROUP BY suite, test_name, variant
