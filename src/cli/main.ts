@@ -278,8 +278,7 @@ program
           await runQuarantine({
             store,
             action: "auto",
-            flakyRateThreshold:
-              config.quarantine.flaky_rate_threshold * 100,
+            flakyRateThreshold: config.quarantine.flaky_rate_threshold,
             minRuns: config.quarantine.min_runs,
           });
           const quarantined = await store.queryQuarantined();
