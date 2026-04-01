@@ -13,6 +13,7 @@ import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import { ActrunRunner } from "./runners/actrun.js";
 import { runBisect } from "./commands/bisect.js";
+import { runImport } from "./commands/import.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
@@ -81,14 +82,13 @@ program
         return response.data;
       },
       async downloadArtifact(artifactId: number) {
-        // TODO: Returns a zip buffer. Needs adm-zip or similar for extraction.
         const response = await octokit.actions.downloadArtifact({
           owner,
           repo,
           artifact_id: artifactId,
           archive_format: "zip",
         });
-        return response.data as unknown as string;
+        return Buffer.from(response.data as ArrayBuffer);
       },
     };
 
@@ -302,6 +302,32 @@ program
       }
     },
   );
+
+// --- import ---
+program
+  .command("import <file>")
+  .description("Import a local test report file")
+  .option("--adapter <type>", "Adapter type (playwright, junit)", "playwright")
+  .option("--commit <sha>", "Commit SHA")
+  .option("--branch <branch>", "Branch name")
+  .action(async (file: string, opts: { adapter: string; commit?: string; branch?: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const result = await runImport({
+        store,
+        filePath: resolve(file),
+        adapterType: opts.adapter,
+        commitSha: opts.commit,
+        branch: opts.branch,
+        repo: `${config.repo.owner}/${config.repo.name}`,
+      });
+      console.log(`Imported ${result.testsImported} test results`);
+    } finally {
+      await store.close();
+    }
+  });
 
 // --- bisect ---
 program
