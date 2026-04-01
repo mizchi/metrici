@@ -7,6 +7,7 @@ import type {
   FlakyScore,
   FlakyQueryOpts,
   QuarantinedTest,
+  TrendEntry,
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
@@ -116,6 +117,21 @@ export class DuckDBStore implements MetricStore {
       commitSha: row.commit_sha,
       variant: row.variant ? JSON.parse(row.variant) : null,
       createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async queryFlakyTrend(suite: string, testName: string): Promise<TrendEntry[]> {
+    const rows = await this.all(
+      `SELECT suite, test_name,
+        DATE_TRUNC('week', created_at)::VARCHAR AS week,
+        COUNT(*)::INTEGER AS runs,
+        ROUND(COUNT(*) FILTER (WHERE status = 'failed') * 100.0 / COUNT(*), 2)::DOUBLE AS flaky_rate
+      FROM test_results WHERE suite = ? AND test_name = ?
+      GROUP BY suite, test_name, week ORDER BY week`,
+      [suite, testName]
+    );
+    return rows.map((r: any) => ({
+      suite: r.suite, testName: r.test_name, week: r.week, runs: r.runs, flakyRate: r.flaky_rate,
     }));
   }
 

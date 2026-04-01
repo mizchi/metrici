@@ -8,7 +8,7 @@ import {
   collectWorkflowRuns,
   type GitHubClient,
 } from "./commands/collect.js";
-import { runFlaky, formatFlakyTable } from "./commands/flaky.js";
+import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend } from "./commands/flaky.js";
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
@@ -111,12 +111,18 @@ program
   .description("Show flaky test statistics")
   .option("--top <n>", "Number of top flaky tests to show")
   .option("--test <filter>", "Filter by test name")
-  .action(async (opts: { top?: string; test?: string }) => {
+  .option("--trend", "Show weekly flaky trend (requires --test)")
+  .action(async (opts: { top?: string; test?: string; trend?: boolean }) => {
     const config = loadConfig(process.cwd());
     const store = new DuckDBStore(resolve(config.storage.path));
     await store.initialize();
 
     try {
+      if (opts.trend && opts.test) {
+        const entries = await runFlakyTrend({ store, suite: "", testName: opts.test });
+        console.log(formatFlakyTrend(entries));
+        return;
+      }
       const results = await runFlaky({
         store,
         top: opts.top ? Number(opts.top) : undefined,

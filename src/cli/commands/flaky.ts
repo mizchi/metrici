@@ -1,4 +1,4 @@
-import type { MetricStore, FlakyScore, FlakyQueryOpts } from "../storage/types.js";
+import type { MetricStore, FlakyScore, FlakyQueryOpts, TrendEntry } from "../storage/types.js";
 
 export interface FlakyOpts {
   store: MetricStore;
@@ -47,6 +47,15 @@ export function formatFlakyTable(results: FlakyScore[]): string {
   ]);
 
   return formatTable(headers, rows);
+}
+
+export async function runFlakyTrend(opts: { store: MetricStore; suite: string; testName: string }): Promise<TrendEntry[]> {
+  return opts.store.queryFlakyTrend(opts.suite, opts.testName);
+}
+
+export function formatFlakyTrend(entries: TrendEntry[]): string {
+  if (entries.length === 0) return "No trend data found.";
+  return entries.map((e) => `${e.week}  ${e.flakyRate.toFixed(1)}%  (${e.runs} runs)`).join("\n");
 }
 
 function formatTable(headers: string[], rows: string[][]): string {
