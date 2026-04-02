@@ -1,4 +1,10 @@
 ///|
+pub(all) struct StableVariantEntryInput {
+  key : String
+  value : String
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
 pub(all) struct TestMeta {
   suite : String
   test_name : String
@@ -9,6 +15,33 @@ pub(all) struct TestMeta {
   avg_duration_ms : Int
   previously_failed : Bool
   is_new : Bool
+  task_id : String?
+  filter : String?
+  test_id : String?
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct SamplingHistoryRowInput {
+  suite : String
+  test_name : String
+  task_id : String?
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String?
+  status : String
+  retry_count : Int
+  duration_ms : Int
+  created_at : String
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct SamplingListedTestInput {
+  suite : String
+  test_name : String
+  task_id : String?
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String?
 } derive(Eq, Show, FromJson, ToJson)
 
 ///|
@@ -381,12 +414,6 @@ pub(all) struct AffectedReportCoreOutput {
   selected : Array[AffectedSelectionOutput]
   unmatched : Array[String]
   summary : AffectedReportSummaryOutput
-} derive(Eq, Show, FromJson, ToJson)
-
-///|
-pub(all) struct StableVariantEntryInput {
-  key : String
-  value : String
 } derive(Eq, Show, FromJson, ToJson)
 
 ///|

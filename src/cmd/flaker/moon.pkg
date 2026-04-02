@@ -24,6 +24,7 @@ options(
         "sample_random_json",
         "sample_weighted_json",
         "sample_hybrid_json",
+        "build_sampling_meta_json",
         "resolve_affected_json",
         "create_stable_test_id_json",
         "resolve_test_identity_json",

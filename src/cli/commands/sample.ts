@@ -1,5 +1,11 @@
 import type { MetricStore } from "../storage/types.js";
-import type { TestMeta, MetriciCore } from "../core/loader.js";
+import type {
+  MetriciCore,
+  SamplingHistoryRowInput,
+  SamplingListedTestInput,
+  StableVariantEntryInput,
+  TestMeta,
+} from "../core/loader.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import type { TestId } from "../runners/types.js";
 import type { SamplingMode } from "./sampling-options.js";
@@ -23,10 +29,48 @@ export interface SampleOpts {
   listedTests?: TestId[];
 }
 
+function toCoreVariantEntries(
+  variant?: Record<string, string> | null,
+): StableVariantEntryInput[] | null {
+  if (!variant) {
+    return null;
+  }
+  const entries = Object.entries(variant)
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => ({ key, value: String(value) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+  return entries.length > 0 ? entries : null;
+}
+
+function createListedTestKey(test: TestId): string {
+  return (
+    test.testId ??
+    createStableTestId({
+      suite: test.suite,
+      testName: test.testName,
+      taskId: test.taskId,
+      filter: test.filter,
+      variant: test.variant,
+    })
+  );
+}
+
+function createMetaKey(test: TestMeta): string {
+  return (
+    test.test_id ??
+    createStableTestId({
+      suite: test.suite,
+      testName: test.test_name,
+      taskId: test.task_id,
+      filter: test.filter,
+    })
+  );
+}
+
 function buildListedTestIndex(listedTests: TestId[]): Map<string, TestId[]> {
   const index = new Map<string, TestId[]>();
   for (const test of listedTests) {
-    const key = `${test.suite}\0${test.testName}`;
+    const key = createListedTestKey(test);
     const existing = index.get(key);
     if (existing) {
       existing.push(test);
@@ -39,44 +83,27 @@ function buildListedTestIndex(listedTests: TestId[]): Map<string, TestId[]> {
 
 export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
   const core = await loadCore();
-  let allTests = mergeListedTests(
-    await buildTestMeta(opts.store),
-    opts.listedTests ?? [],
-  );
+  const listedTests = opts.listedTests ?? [];
+  let allTests = await buildSamplingMeta(opts.store, listedTests, core);
   if (opts.skipQuarantined) {
     const quarantined = await opts.store.queryQuarantined();
     const qSet = new Set(quarantined.map((q) => q.testId));
     const manifestEntries = opts.quarantineManifestEntries ?? [];
-    const listedTestIndex = buildListedTestIndex(opts.listedTests ?? []);
-    allTests = allTests.filter(
-      (t) => {
-        const key = `${t.suite}\0${t.test_name}`;
-        const enriched = listedTestIndex.get(key)?.[0];
-        const plainId = createStableTestId({
-          suite: t.suite,
-          testName: t.test_name,
-        });
-        const enrichedId = enriched
-          ? createStableTestId({
-              suite: enriched.suite,
-              testName: enriched.testName,
-              taskId: enriched.taskId,
-              filter: enriched.filter,
-              variant: enriched.variant,
-            })
-          : null;
+    const listedTestIndex = buildListedTestIndex(listedTests);
+    allTests = allTests.filter((test) => {
+      const key = createMetaKey(test);
+      const enriched = listedTestIndex.get(key)?.[0];
 
-        if (qSet.has(plainId) || (enrichedId != null && qSet.has(enrichedId))) {
-          return false;
-        }
+      if (qSet.has(key)) {
+        return false;
+      }
 
-        return !isManifestQuarantined(manifestEntries, {
-          suite: enriched?.suite ?? t.suite,
-          testName: enriched?.testName ?? t.test_name,
-          taskId: enriched?.taskId,
-        });
-      },
-    );
+      return !isManifestQuarantined(manifestEntries, {
+        suite: enriched?.suite ?? test.suite,
+        testName: enriched?.testName ?? test.test_name,
+        taskId: enriched?.taskId ?? test.task_id ?? undefined,
+      });
+    });
   }
 
   let count: number;
@@ -92,17 +119,23 @@ export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
     if (!opts.resolver || !opts.changedFiles) {
       throw new Error("affected mode requires resolver and changedFiles");
     }
-    const allSuites = allTests.map((t) => t.suite);
-    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
-    return allTests.filter((t) => affectedSuites.includes(t.suite));
+    const allSuites = [...new Set(allTests.map((test) => test.suite))];
+    const affectedSuites = await opts.resolver.resolve(
+      opts.changedFiles,
+      allSuites,
+    );
+    return allTests.filter((test) => affectedSuites.includes(test.suite));
   }
 
   if (opts.mode === "hybrid") {
     if (!opts.resolver || !opts.changedFiles) {
       throw new Error("hybrid mode requires resolver and changedFiles");
     }
-    const allSuites = allTests.map((t) => t.suite);
-    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
+    const allSuites = [...new Set(allTests.map((test) => test.suite))];
+    const affectedSuites = await opts.resolver.resolve(
+      opts.changedFiles,
+      allSuites,
+    );
     return core.sampleHybrid(allTests, affectedSuites, count, seed);
   }
 
@@ -112,68 +145,61 @@ export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
   return core.sampleRandom(allTests, count, seed);
 }
 
-async function buildTestMeta(store: MetricStore): Promise<TestMeta[]> {
+async function buildSamplingMeta(
+  store: MetricStore,
+  listedTests: TestId[],
+  core: MetriciCore,
+): Promise<TestMeta[]> {
   const rows = await store.raw<{
     suite: string;
     test_name: string;
-    total_runs: number;
-    fail_count: number;
-    flaky_rate: number;
-    last_run_at: string;
-    avg_duration_ms: number;
-    previously_failed: boolean;
-    first_seen_at: string;
+    task_id: string | null;
+    filter_text: string | null;
+    variant: string | null;
+    test_id: string | null;
+    status: string;
+    retry_count: number;
+    duration_ms: number;
+    created_at: string;
   }>(`
     SELECT
       suite,
       test_name,
-      COUNT(*)::INTEGER AS total_runs,
-      COUNT(*) FILTER (WHERE status = 'failed')::INTEGER AS fail_count,
-      ROUND(COUNT(*) FILTER (WHERE status = 'failed') * 100.0 / COUNT(*), 2)::DOUBLE AS flaky_rate,
-      MAX(created_at)::VARCHAR AS last_run_at,
-      ROUND(AVG(duration_ms), 2)::DOUBLE AS avg_duration_ms,
-      (COUNT(*) FILTER (WHERE status = 'failed') > 0)::BOOLEAN AS previously_failed,
-      MIN(created_at)::VARCHAR AS first_seen_at
+      task_id,
+      filter_text,
+      variant::VARCHAR AS variant,
+      test_id,
+      status,
+      COALESCE(retry_count, 0)::INTEGER AS retry_count,
+      COALESCE(duration_ms, 0)::INTEGER AS duration_ms,
+      COALESCE(created_at::VARCHAR, '') AS created_at
     FROM test_results
-    GROUP BY suite, test_name
   `);
 
-  return rows.map((r) => ({
-    suite: r.suite,
-    test_name: r.test_name,
-    flaky_rate: r.flaky_rate,
-    total_runs: r.total_runs,
-    fail_count: r.fail_count,
-    last_run_at: r.last_run_at,
-    avg_duration_ms: r.avg_duration_ms,
-    previously_failed: r.previously_failed,
-    is_new: r.total_runs <= 1,
+  const historyRows: SamplingHistoryRowInput[] = rows.map((row) => ({
+    suite: row.suite,
+    test_name: row.test_name,
+    task_id: row.task_id,
+    filter: row.filter_text,
+    variant: row.variant
+      ? toCoreVariantEntries(
+          JSON.parse(row.variant) as Record<string, string> | null,
+        )
+      : null,
+    test_id: row.test_id,
+    status: row.status,
+    retry_count: row.retry_count,
+    duration_ms: row.duration_ms,
+    created_at: row.created_at,
   }));
-}
+  const listedInputs: SamplingListedTestInput[] = listedTests.map((test) => ({
+    suite: test.suite,
+    test_name: test.testName,
+    task_id: test.taskId,
+    filter: test.filter,
+    variant: toCoreVariantEntries(test.variant),
+    test_id: test.testId,
+  }));
 
-function mergeListedTests(
-  meta: TestMeta[],
-  listedTests: TestId[],
-): TestMeta[] {
-  const seen = new Set(meta.map((entry) => `${entry.suite}\0${entry.test_name}`));
-  const merged = [...meta];
-
-  for (const test of listedTests) {
-    const key = `${test.suite}\0${test.testName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push({
-      suite: test.suite,
-      test_name: test.testName,
-      flaky_rate: 0,
-      total_runs: 0,
-      fail_count: 0,
-      last_run_at: "",
-      avg_duration_ms: 0,
-      previously_failed: false,
-      is_new: true,
-    });
-  }
-
-  return merged;
+  return core.buildSamplingMeta(historyRows, listedInputs);
 }

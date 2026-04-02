@@ -1,5 +1,7 @@
+import { access } from "node:fs/promises";
 import type { DependencyGraph, GraphNode } from "../graph/types.js";
 import { MOONBIT_JS_BRIDGE_URL } from "./build-artifact.js";
+import { createStableTestId, resolveTestIdentity } from "../identity.js";
 import {
   buildReverseDeps as buildReverseDepsFallback,
   expandTransitive as expandTransitiveFallback,
@@ -43,6 +45,36 @@ export interface TestMeta {
   avg_duration_ms: number;
   previously_failed: boolean;
   is_new: boolean;
+  task_id?: string | null;
+  filter?: string | null;
+  test_id?: string | null;
+}
+
+export interface StableVariantEntryInput {
+  key: string;
+  value: string;
+}
+
+export interface SamplingHistoryRowInput {
+  suite: string;
+  test_name: string;
+  task_id?: string | null;
+  filter?: string | null;
+  variant?: StableVariantEntryInput[] | null;
+  test_id?: string | null;
+  status: string;
+  retry_count: number;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface SamplingListedTestInput {
+  suite: string;
+  test_name: string;
+  task_id?: string | null;
+  filter?: string | null;
+  variant?: StableVariantEntryInput[] | null;
+  test_id?: string | null;
 }
 
 export interface MetriciCore {
@@ -50,6 +82,10 @@ export interface MetriciCore {
   sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[];
   sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[];
   sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[];
+  buildSamplingMeta(
+    historyRows: SamplingHistoryRowInput[],
+    listedTests: SamplingListedTestInput[],
+  ): TestMeta[];
   resolveAffected(workflowText: string, changedPaths: string[]): string[];
   findAffectedNodes(graph: DependencyGraph, changedFiles: string[]): string[];
   expandTransitive(graph: DependencyGraph, initial: Set<string>): string[];
@@ -212,12 +248,218 @@ function clampSampleCount(count: number, total: number): number {
   return Math.max(0, Math.min(Math.trunc(count), total));
 }
 
+function fromCoreVariantEntries(
+  variant?: StableVariantEntryInput[] | null,
+): Record<string, string> | null {
+  if (!variant || variant.length === 0) {
+    return null;
+  }
+  return Object.fromEntries(
+    [...variant]
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((entry) => [entry.key, entry.value] as const),
+  );
+}
+
+function roundPercent(numerator: number, denominator: number): number {
+  if (denominator <= 0) {
+    return 0;
+  }
+  return Math.round(((numerator * 100) / denominator) * 100) / 100;
+}
+
+function createSuiteTestKey(suite: string, testName: string): string {
+  return `${suite}\0${testName}`;
+}
+
+function isDefaultHistoryIdentity(row: SamplingHistoryRowInput): boolean {
+  return (
+    (row.task_id == null || row.task_id === row.suite) &&
+    row.filter == null &&
+    (row.test_id == null ||
+      row.test_id ===
+        createStableTestId({
+          suite: row.suite,
+          testName: row.test_name,
+        }))
+  );
+}
+
+function buildSamplingMetaFallback(
+  historyRows: SamplingHistoryRowInput[],
+  listedTests: SamplingListedTestInput[],
+): TestMeta[] {
+  const accById = new Map<
+    string,
+    {
+      suite: string;
+      test_name: string;
+      task_id: string;
+      filter: string | null;
+      test_id: string;
+      total_runs: number;
+      fail_count: number;
+      failure_signals: number;
+      total_duration_ms: number;
+      last_run_at: string;
+    }
+  >();
+  const listedBySuiteTest = new Map<string, SamplingListedTestInput[]>();
+
+  for (const listedTest of listedTests) {
+    const key = createSuiteTestKey(listedTest.suite, listedTest.test_name);
+    const existing = listedBySuiteTest.get(key);
+    if (existing) {
+      existing.push(listedTest);
+    } else {
+      listedBySuiteTest.set(key, [listedTest]);
+    }
+  }
+
+  for (const row of historyRows) {
+    const listedCandidates =
+      isDefaultHistoryIdentity(row)
+        ? listedBySuiteTest.get(createSuiteTestKey(row.suite, row.test_name)) ?? []
+        : [];
+    const resolved =
+      listedCandidates.length === 1
+        ? resolveTestIdentity({
+            suite: listedCandidates[0].suite,
+            testName: listedCandidates[0].test_name,
+            taskId: listedCandidates[0].task_id,
+            filter: listedCandidates[0].filter,
+            variant: fromCoreVariantEntries(listedCandidates[0].variant),
+            testId: listedCandidates[0].test_id ?? undefined,
+          })
+        : resolveTestIdentity({
+            suite: row.suite,
+            testName: row.test_name,
+            taskId: row.task_id,
+            filter: row.filter,
+            variant: fromCoreVariantEntries(row.variant),
+            testId: row.test_id ?? undefined,
+          });
+    const acc = accById.get(resolved.testId) ?? {
+      suite: resolved.suite,
+      test_name: resolved.testName,
+      task_id: resolved.taskId,
+      filter: resolved.filter,
+      test_id: resolved.testId,
+      total_runs: 0,
+      fail_count: 0,
+      failure_signals: 0,
+      total_duration_ms: 0,
+      last_run_at: "",
+    };
+
+    acc.total_runs += 1;
+    if (row.status === "failed") {
+      acc.fail_count += 1;
+    }
+    if (
+      row.status === "failed" ||
+      row.status === "flaky" ||
+      (row.retry_count > 0 && row.status === "passed")
+    ) {
+      acc.failure_signals += 1;
+    }
+    acc.total_duration_ms += row.duration_ms;
+    if (row.created_at > acc.last_run_at) {
+      acc.last_run_at = row.created_at;
+    }
+
+    accById.set(resolved.testId, acc);
+  }
+
+  for (const test of listedTests) {
+    const resolved = resolveTestIdentity({
+      suite: test.suite,
+      testName: test.test_name,
+      taskId: test.task_id,
+      filter: test.filter,
+      variant: fromCoreVariantEntries(test.variant),
+      testId: test.test_id ?? undefined,
+    });
+    if (accById.has(resolved.testId)) {
+      continue;
+    }
+    accById.set(resolved.testId, {
+      suite: resolved.suite,
+      test_name: resolved.testName,
+      task_id: resolved.taskId,
+      filter: resolved.filter,
+      test_id: resolved.testId,
+      total_runs: 0,
+      fail_count: 0,
+      failure_signals: 0,
+      total_duration_ms: 0,
+      last_run_at: "",
+    });
+  }
+
+  return [...accById.values()]
+    .map((entry) => ({
+      suite: entry.suite,
+      test_name: entry.test_name,
+      flaky_rate: roundPercent(entry.failure_signals, entry.total_runs),
+      total_runs: entry.total_runs,
+      fail_count: entry.fail_count,
+      last_run_at: entry.last_run_at,
+      avg_duration_ms:
+        entry.total_runs > 0
+          ? Math.round(entry.total_duration_ms / entry.total_runs)
+          : 0,
+      previously_failed: entry.failure_signals > 0,
+      is_new: entry.total_runs <= 1,
+      task_id: entry.task_id,
+      filter: entry.filter,
+      test_id: entry.test_id,
+    }))
+    .sort(
+      (a, b) =>
+        (a.test_id ?? "").localeCompare(b.test_id ?? "") ||
+        a.suite.localeCompare(b.suite) ||
+        a.test_name.localeCompare(b.test_name),
+    );
+}
+
+function normalizeSamplingHistoryRow(
+  row: SamplingHistoryRowInput,
+): SamplingHistoryRowInput {
+  return {
+    suite: row.suite,
+    test_name: row.test_name,
+    status: row.status,
+    retry_count: row.retry_count,
+    duration_ms: row.duration_ms,
+    created_at: row.created_at,
+    ...(row.task_id != null ? { task_id: row.task_id } : {}),
+    ...(row.filter != null ? { filter: row.filter } : {}),
+    ...(row.variant != null ? { variant: row.variant } : {}),
+    ...(row.test_id != null ? { test_id: row.test_id } : {}),
+  };
+}
+
+function normalizeSamplingListedTest(
+  test: SamplingListedTestInput,
+): SamplingListedTestInput {
+  return {
+    suite: test.suite,
+    test_name: test.test_name,
+    ...(test.task_id != null ? { task_id: test.task_id } : {}),
+    ...(test.filter != null ? { filter: test.filter } : {}),
+    ...(test.variant != null ? { variant: test.variant } : {}),
+    ...(test.test_id != null ? { test_id: test.test_id } : {}),
+  };
+}
+
 // MoonBit JS backend types
 interface MbtJsExports {
   detect_flaky_json: (input: string) => string;
   sample_random_json: (meta: string, count: number, seed: number) => string;
   sample_weighted_json: (meta: string, count: number, seed: number) => string;
   sample_hybrid_json: (meta: string, affected: string, count: number, seed: number) => string;
+  build_sampling_meta_json: (historyRows: string, listedTests: string) => string;
   resolve_affected_json: (workflow: string, changed: string) => string;
   find_affected_nodes_json: (graph: string, changed: string) => string;
   expand_transitive_json: (graph: string, initial: string) => string;
@@ -262,6 +504,17 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
     sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
       return JSON.parse(mbt.sample_hybrid_json(JSON.stringify(meta), JSON.stringify(affectedSuites), count, seed));
     },
+    buildSamplingMeta(
+      historyRows: SamplingHistoryRowInput[],
+      listedTests: SamplingListedTestInput[],
+    ): TestMeta[] {
+      return JSON.parse(
+        mbt.build_sampling_meta_json(
+          JSON.stringify(historyRows.map(normalizeSamplingHistoryRow)),
+          JSON.stringify(listedTests.map(normalizeSamplingListedTest)),
+        ),
+      );
+    },
     resolveAffected(workflowText: string, changedPaths: string[]): string[] {
       return JSON.parse(mbt.resolve_affected_json(workflowText, JSON.stringify(changedPaths)));
     },
@@ -296,6 +549,7 @@ export async function loadCore(): Promise<MetriciCore> {
       typeof mbt.sample_random_json === "function" &&
       typeof mbt.sample_weighted_json === "function" &&
       typeof mbt.sample_hybrid_json === "function" &&
+      typeof mbt.build_sampling_meta_json === "function" &&
       typeof mbt.resolve_affected_json === "function" &&
       typeof mbt.find_affected_nodes_json === "function" &&
       typeof mbt.expand_transitive_json === "function" &&
@@ -314,6 +568,7 @@ export async function loadCore(): Promise<MetriciCore> {
     sampleRandom,
     sampleWeighted,
     sampleHybrid,
+    buildSamplingMeta: buildSamplingMetaFallback,
     resolveAffected: resolveAffectedFallback,
     findAffectedNodes: findAffectedNodesFallback,
     expandTransitive: expandTransitiveFallback,
@@ -340,6 +595,7 @@ export function loadCoreSync(): MetriciCore {
     sampleRandom,
     sampleWeighted,
     sampleHybrid,
+    buildSamplingMeta: buildSamplingMetaFallback,
     resolveAffected: resolveAffectedFallback,
     findAffectedNodes: findAffectedNodesFallback,
     expandTransitive: expandTransitiveFallback,
@@ -496,4 +752,3 @@ function globToRegex(pattern: string): RegExp {
   out += "$";
   return new RegExp(out);
 }
-import { access } from "node:fs/promises";

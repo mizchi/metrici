@@ -276,4 +276,98 @@ describe("run command", () => {
     );
     expect(result.results).toHaveLength(2);
   });
+
+  it("enriches sampled tests by stable test_id when suite and test name collide", async () => {
+    await store.insertTestResults([
+      {
+        workflowRunId: 1,
+        suite: "tests/shared.spec.ts",
+        testName: "shared case",
+        taskId: "desktop",
+        filter: "@desktop",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc",
+        variant: null,
+        createdAt: new Date(),
+      },
+      {
+        workflowRunId: 1,
+        suite: "tests/shared.spec.ts",
+        testName: "shared case",
+        taskId: "mobile",
+        filter: "@mobile",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc",
+        variant: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const calls: TestId[][] = [];
+    const runner: RunnerAdapter = {
+      name: "mock",
+      capabilities: { nativeParallel: false },
+      async listTests() {
+        return [
+          {
+            suite: "tests/shared.spec.ts",
+            testName: "shared case",
+            taskId: "desktop",
+            filter: "@desktop",
+          },
+          {
+            suite: "tests/shared.spec.ts",
+            testName: "shared case",
+            taskId: "mobile",
+            filter: "@mobile",
+          },
+        ];
+      },
+      async execute(tests) {
+        calls.push([...tests]);
+        return {
+          exitCode: 0,
+          results: tests.map((test) => ({
+            suite: test.suite,
+            testName: test.testName,
+            taskId: test.taskId,
+            filter: test.filter,
+            status: "passed",
+            durationMs: 10,
+            retryCount: 0,
+          })),
+          durationMs: 10,
+          stdout: "",
+          stderr: "",
+        };
+      },
+    };
+
+    const resolver: DependencyResolver = {
+      resolve() {
+        return ["tests/shared.spec.ts"];
+      },
+    };
+
+    await runTests({
+      store,
+      runner,
+      mode: "affected",
+      resolver,
+      changedFiles: ["src/shared/view.ts"],
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toHaveLength(2);
+    expect(calls[0].map((test) => test.filter).sort()).toEqual([
+      "@desktop",
+      "@mobile",
+    ]);
+  });
 });

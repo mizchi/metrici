@@ -259,3 +259,118 @@ describe("sample command without history", () => {
     );
   });
 });
+
+describe("sample command with stable identity history", () => {
+  let store: DuckDBStore;
+
+  beforeEach(async () => {
+    store = new DuckDBStore(":memory:");
+    await store.initialize();
+    await store.insertWorkflowRun({
+      id: 1,
+      repo: "owner/repo",
+      branch: "main",
+      commitSha: "abc123",
+      event: "push",
+      status: "success",
+      createdAt: new Date("2026-04-01T00:00:00Z"),
+      durationMs: 60000,
+    });
+  });
+
+  afterEach(async () => {
+    await store.close();
+  });
+
+  it("keeps split task and filter identities separate when suite and test name collide", async () => {
+    await store.insertTestResults([
+      {
+        workflowRunId: 1,
+        suite: "tests/shared.spec.ts",
+        testName: "renders shared flow",
+        taskId: "desktop",
+        filter: "@desktop",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc123",
+        variant: null,
+        createdAt: new Date("2026-04-01T00:00:00Z"),
+      },
+      {
+        workflowRunId: 1,
+        suite: "tests/shared.spec.ts",
+        testName: "renders shared flow",
+        taskId: "mobile",
+        filter: "@mobile",
+        status: "passed",
+        durationMs: 120,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc123",
+        variant: null,
+        createdAt: new Date("2026-04-01T00:01:00Z"),
+      },
+    ]);
+
+    const sampled = await runSample({
+      store,
+      count: 10,
+      mode: "random",
+      seed: 42,
+    });
+
+    expect(sampled).toHaveLength(2);
+    expect(sampled.map((entry) => entry.task_id).sort()).toEqual([
+      "desktop",
+      "mobile",
+    ]);
+    expect(new Set(sampled.map((entry) => entry.test_id)).size).toBe(2);
+  });
+
+  it("treats retry passes as flaky signals in sampling metadata", async () => {
+    await store.insertTestResults([
+      {
+        workflowRunId: 1,
+        suite: "tests/retry.spec.ts",
+        testName: "eventually passes",
+        taskId: "retry",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 1,
+        errorMessage: null,
+        commitSha: "abc123",
+        variant: null,
+        createdAt: new Date("2026-04-01T00:00:00Z"),
+      },
+      {
+        workflowRunId: 1,
+        suite: "tests/retry.spec.ts",
+        testName: "eventually passes",
+        taskId: "retry",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc123",
+        variant: null,
+        createdAt: new Date("2026-04-01T00:01:00Z"),
+      },
+    ]);
+
+    const sampled = await runSample({
+      store,
+      count: 10,
+      mode: "random",
+      seed: 42,
+    });
+
+    expect(sampled).toHaveLength(1);
+    expect(sampled[0]).toMatchObject({
+      suite: "tests/retry.spec.ts",
+      flaky_rate: 50,
+      previously_failed: true,
+    });
+  });
+});

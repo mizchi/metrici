@@ -47,6 +47,21 @@ pub fn sample_hybrid_json(meta_json : String, affected_json : String, count : In
 }
 
 ///|
+pub fn build_sampling_meta_json(
+  history_rows_json : String,
+  listed_tests_json : String,
+) -> String {
+  let history_rows : Array[@types.SamplingHistoryRowInput] = try! @json.from_json(
+    try! @json.parse(history_rows_json),
+  )
+  let listed_tests : Array[@types.SamplingListedTestInput] = try! @json.from_json(
+    try! @json.parse(listed_tests_json),
+  )
+  let result = @sampler.build_sampling_meta(history_rows, listed_tests)
+  result.to_json().stringify()
+}
+
+///|
 pub fn resolve_affected_json(
   workflow_text : String,
   changed_paths_json : String,

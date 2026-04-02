@@ -305,6 +305,19 @@ pub(all) struct ReverseDepEntry {
   dependents : Array[String]
 } derive(Eq, Show, ToJson, @json.FromJson)
 
+pub(all) struct SamplingHistoryRowInput {
+  suite : String
+  test_name : String
+  task_id : String?
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String?
+  status : String
+  retry_count : Int
+  duration_ms : Int
+  created_at : String
+} derive(Eq, Show, ToJson, @json.FromJson)
+
 pub(all) struct SamplingKpiConfusionMatrixOutput {
   true_positive : Int
   false_positive : Int
@@ -340,6 +353,15 @@ pub(all) struct SamplingKpiSignalOutput {
   rate : Double?
 } derive(Eq, Show, ToJson, @json.FromJson)
 
+pub(all) struct SamplingListedTestInput {
+  suite : String
+  test_name : String
+  task_id : String?
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String?
+} derive(Eq, Show, ToJson, @json.FromJson)
+
 pub(all) struct StableTestIdentityInput {
   suite : String
   test_name : String
@@ -364,6 +386,9 @@ pub(all) struct TestMeta {
   avg_duration_ms : Int
   previously_failed : Bool
   is_new : Bool
+  task_id : String?
+  filter : String?
+  test_id : String?
 } derive(Eq, Show, ToJson, @json.FromJson)
 
 pub(all) struct TestRunEntry {
