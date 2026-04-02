@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { TestCaseResult } from "../adapters/types.js";
 import { junitAdapter } from "../adapters/junit.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
@@ -39,6 +41,21 @@ export interface NormalizedReportSummary {
   tests: ReportTestSummary[];
 }
 
+export interface ReportSummaryArtifactMetadata {
+  shard: string | null;
+  module: string | null;
+  offset: number | null;
+  limit: number | null;
+  matrix: Record<string, string> | null;
+  variant: Record<string, string> | null;
+  extra: Record<string, string>;
+}
+
+export interface ReportSummaryArtifact {
+  summary: NormalizedReportSummary;
+  metadata: ReportSummaryArtifactMetadata;
+}
+
 export interface ReportDiffEntry {
   testId: string;
   suite: string;
@@ -73,6 +90,29 @@ export interface ReportDiff {
   };
 }
 
+export interface ReportAggregateShardSummary {
+  shardId: string;
+  adapter: string;
+  metadata: ReportSummaryArtifactMetadata;
+  totals: ReportTotals;
+  unstableCount: number;
+}
+
+export interface ReportAggregateUnstableTest extends ReportTestSummary {
+  shards: string[];
+  statuses: Array<"failed" | "flaky">;
+}
+
+export interface ReportAggregate {
+  summary: {
+    shardCount: number;
+    unstableCount: number;
+  };
+  totals: ReportTotals;
+  shards: ReportAggregateShardSummary[];
+  unstable: ReportAggregateUnstableTest[];
+}
+
 function emptyTotals(): ReportTotals {
   return {
     total: 0,
@@ -85,8 +125,49 @@ function emptyTotals(): ReportTotals {
   };
 }
 
+function emptyArtifactMetadata(): ReportSummaryArtifactMetadata {
+  return {
+    shard: null,
+    module: null,
+    offset: null,
+    limit: null,
+    matrix: null,
+    variant: null,
+    extra: {},
+  };
+}
+
 function compareNullable(a: string | null, b: string | null): number {
   return (a ?? "").localeCompare(b ?? "");
+}
+
+function normalizeRecord(
+  input?: Record<string, unknown> | null,
+): Record<string, string> | null {
+  if (!input) return null;
+  const entries = Object.entries(input)
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => [key, String(value)] as const)
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length === 0) return null;
+  return Object.fromEntries(entries);
+}
+
+function normalizeArtifactMetadata(
+  metadata?: Partial<ReportSummaryArtifactMetadata> | null,
+): ReportSummaryArtifactMetadata {
+  const base = emptyArtifactMetadata();
+  if (!metadata) return base;
+
+  return {
+    shard: metadata.shard ?? null,
+    module: metadata.module ?? null,
+    offset: metadata.offset ?? null,
+    limit: metadata.limit ?? null,
+    matrix: normalizeRecord(metadata.matrix) ?? null,
+    variant: normalizeRecord(metadata.variant) ?? null,
+    extra: normalizeRecord(metadata.extra) ?? {},
+  };
 }
 
 function variantLabel(variant: Record<string, string> | null): string {
@@ -173,6 +254,16 @@ export function summarizeResults(
   };
 }
 
+export function createReportSummaryArtifact(
+  summary: NormalizedReportSummary,
+  metadata?: Partial<ReportSummaryArtifactMetadata> | null,
+): ReportSummaryArtifact {
+  return {
+    summary,
+    metadata: normalizeArtifactMetadata(metadata),
+  };
+}
+
 function parseAdapterReport(
   adapter: string,
   input: string,
@@ -196,6 +287,41 @@ export function runReportSummarize(opts: {
 
 export function parseReportSummary(input: string): NormalizedReportSummary {
   return JSON.parse(input) as NormalizedReportSummary;
+}
+
+export function parseReportSummaryArtifact(input: string): ReportSummaryArtifact {
+  const parsed = JSON.parse(input) as
+    | ReportSummaryArtifact
+    | NormalizedReportSummary;
+
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "summary" in parsed &&
+    "metadata" in parsed
+  ) {
+    const artifact = parsed as ReportSummaryArtifact;
+    return createReportSummaryArtifact(artifact.summary, artifact.metadata);
+  }
+
+  return createReportSummaryArtifact(parsed as NormalizedReportSummary);
+}
+
+export function loadReportSummaryArtifactsFromDir(
+  dir: string,
+): ReportSummaryArtifact[] {
+  const files = walkJsonFiles(dir).sort((a, b) => a.localeCompare(b));
+  const artifacts: ReportSummaryArtifact[] = [];
+
+  for (const file of files) {
+    try {
+      artifacts.push(parseReportSummaryArtifact(readFileSync(file, "utf-8")));
+    } catch {
+      // Skip non-summary JSON files.
+    }
+  }
+
+  return artifacts;
 }
 
 function toDiffEntry(
@@ -287,6 +413,72 @@ export function runReportDiff(opts: {
   };
 }
 
+export function runReportAggregate(opts: {
+  summaries: ReportSummaryArtifact[];
+}): ReportAggregate {
+  const totals = emptyTotals();
+  const shards = opts.summaries.map((artifact, index) => {
+    const shardId = artifact.metadata.shard ?? `summary-${index + 1}`;
+    addTotals(totals, artifact.summary.totals);
+    return {
+      shardId,
+      adapter: artifact.summary.adapter,
+      metadata: artifact.metadata,
+      totals: artifact.summary.totals,
+      unstableCount: artifact.summary.unstable.length,
+      summary: artifact.summary,
+    };
+  });
+
+  const unstableIndex = new Map<
+    string,
+    ReportAggregateUnstableTest & {
+      shardSet: Set<string>;
+      statusSet: Set<"failed" | "flaky">;
+    }
+  >();
+
+  for (const shard of shards) {
+    for (const test of shard.summary.unstable) {
+      const status = test.status === "failed" ? "failed" : "flaky";
+      const existing = unstableIndex.get(test.testId);
+      if (existing) {
+        existing.shardSet.add(shard.shardId);
+        existing.statusSet.add(status);
+        continue;
+      }
+
+      unstableIndex.set(test.testId, {
+        ...test,
+        shards: [],
+        statuses: [],
+        shardSet: new Set([shard.shardId]),
+        statusSet: new Set([status]),
+      });
+    }
+  }
+
+  return {
+    summary: {
+      shardCount: shards.length,
+      unstableCount: unstableIndex.size,
+    },
+    totals,
+    shards: shards
+      .map(({ summary: _summary, ...shard }) => shard)
+      .sort((a, b) => a.shardId.localeCompare(b.shardId)),
+    unstable: sortTests(
+      [...unstableIndex.values()].map(
+        ({ shardSet, statusSet, ...entry }) => ({
+          ...entry,
+          shards: [...shardSet].sort(),
+          statuses: [...statusSet].sort(),
+        }),
+      ),
+    ),
+  };
+}
+
 function formatTotals(totals: ReportTotals): string[] {
   return [
     `- Total: ${totals.total}`,
@@ -297,6 +489,16 @@ function formatTotals(totals: ReportTotals): string[] {
     `- Retries: ${totals.retries}`,
     `- DurationMs: ${totals.durationMs}`,
   ];
+}
+
+function addTotals(target: ReportTotals, source: ReportTotals): void {
+  target.total += source.total;
+  target.passed += source.passed;
+  target.failed += source.failed;
+  target.flaky += source.flaky;
+  target.skipped += source.skipped;
+  target.retries += source.retries;
+  target.durationMs += source.durationMs;
 }
 
 function formatTestRows(
@@ -315,6 +517,46 @@ function formatSummaryTestRows(
     (entry) =>
       `| ${entry.suite} | ${entry.testName} | ${entry.taskId} | ${entry.filter ?? "-"} | ${entry.status} | ${entry.retryCount} |`,
   );
+}
+
+function formatAggregateUnstableRows(
+  entries: ReportAggregateUnstableTest[],
+): string[] {
+  return entries.map(
+    (entry) =>
+      `| ${entry.suite} | ${entry.testName} | ${entry.taskId} | ${entry.filter ?? "-"} | ${entry.statuses.join(", ")} | ${entry.shards.join(", ")} |`,
+  );
+}
+
+function formatArtifactMetadataValue(
+  metadata: ReportSummaryArtifactMetadata,
+): string {
+  const parts: string[] = [];
+
+  if (metadata.matrix) {
+    parts.push(
+      `matrix:${Object.entries(metadata.matrix)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(",")}`,
+    );
+  }
+
+  if (metadata.variant) {
+    parts.push(
+      `variant:${Object.entries(metadata.variant)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(",")}`,
+    );
+  }
+
+  const extraEntries = Object.entries(metadata.extra);
+  if (extraEntries.length > 0) {
+    parts.push(
+      `meta:${extraEntries.map(([key, value]) => `${key}=${value}`).join(",")}`,
+    );
+  }
+
+  return parts.join(" / ") || "-";
 }
 
 function formatReportSection(title: string, rows: string[]): string[] {
@@ -435,4 +677,62 @@ export function formatReportDiff(
         : [],
     ),
   ].join("\n");
+}
+
+export function formatReportAggregate(
+  aggregate: ReportAggregate,
+  format: "json" | "markdown",
+): string {
+  if (format === "json") {
+    return JSON.stringify(aggregate, null, 2);
+  }
+
+  const shardRows = aggregate.shards.map(
+    (shard) =>
+      `| ${shard.shardId} | ${shard.adapter} | ${shard.metadata.module ?? "-"} | ${shard.metadata.offset ?? "-"} | ${shard.metadata.limit ?? "-"} | ${formatArtifactMetadataValue(shard.metadata)} | ${shard.totals.total} | ${shard.totals.failed} | ${shard.totals.flaky} | ${shard.unstableCount} |`,
+  );
+
+  return [
+    "# Aggregated Test Report",
+    "",
+    `- Shards: ${aggregate.summary.shardCount}`,
+    `- Unstable tests: ${aggregate.summary.unstableCount}`,
+    ...formatTotals(aggregate.totals),
+    "",
+    "## Shards",
+    "",
+    "| shard | adapter | module | offset | limit | metadata | total | failed | flaky | unstable |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...shardRows,
+    "",
+    ...formatReportSection(
+      "Aggregated Unstable Tests",
+      aggregate.unstable.length > 0
+        ? [
+            "| suite | testName | taskId | filter | statuses | shards |",
+            "| --- | --- | --- | --- | --- | --- |",
+            ...formatAggregateUnstableRows(aggregate.unstable),
+          ]
+        : [],
+    ),
+  ].join("\n");
+}
+
+function walkJsonFiles(dir: string): string[] {
+  const results: string[] = [];
+
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) {
+      results.push(...walkJsonFiles(fullPath));
+      continue;
+    }
+
+    if (entry.endsWith(".json")) {
+      results.push(fullPath);
+    }
+  }
+
+  return results;
 }
