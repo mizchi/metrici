@@ -71,10 +71,38 @@ interface ValidateQuarantineManifestOpts {
   expiringWithinDays?: number;
 }
 
+interface QuarantineEntryInput {
+  id: string;
+  task_id: string;
+  spec: string;
+  title_pattern: string;
+  mode: QuarantineMode;
+  scope: QuarantineScope;
+  owner: string;
+  reason: string;
+  condition: string;
+  introduced_at: string;
+  expires_at: string;
+  tracking_issue?: string;
+}
+
+interface QuarantineMatchExports {
+  find_matching_quarantine_json?: (
+    entriesJson: string,
+    taskId: string,
+    spec: string,
+    title: string,
+  ) => string;
+}
+
 const DEFAULT_MANIFEST_FILES = [
   "flaker.quarantine.json",
   "flaker-quarantine.json",
 ] as const;
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
 
 const QUARANTINE_MODES = new Set<QuarantineMode>([
   "skip",
@@ -320,12 +348,68 @@ function matchesManifestEntry(
   }
 }
 
+function toCoreEntry(entry: QuarantineManifestEntry): QuarantineEntryInput {
+  return {
+    id: entry.id,
+    task_id: entry.taskId,
+    spec: normalizeSpecPath(entry.spec),
+    title_pattern: entry.titlePattern,
+    mode: entry.mode,
+    scope: entry.scope,
+    owner: entry.owner,
+    reason: entry.reason,
+    condition: entry.condition,
+    introduced_at: entry.introducedAt,
+    expires_at: entry.expiresAt,
+    ...(entry.trackingIssue ? { tracking_issue: entry.trackingIssue } : {}),
+  };
+}
+
+async function loadManifestMatcher(): Promise<
+  (
+    entries: QuarantineManifestEntry[],
+    selector: QuarantineManifestSelector,
+    opts?: FindMatchingManifestEntryOpts,
+  ) => QuarantineManifestEntry | undefined
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineMatchExports;
+    if (typeof mod.find_matching_quarantine_json === "function") {
+      return (entries, selector, opts) => {
+        const filteredEntries = opts?.modes
+          ? entries.filter((entry) => opts.modes!.includes(entry.mode))
+          : entries;
+        const resolved = resolveTestIdentity({
+          suite: selector.suite,
+          testName: selector.testName,
+          taskId: selector.taskId,
+        });
+        const matchedIndex = JSON.parse(
+          mod.find_matching_quarantine_json!(
+            JSON.stringify(filteredEntries.map(toCoreEntry)),
+            resolved.taskId,
+            normalizeSpecPath(resolved.suite),
+            resolved.testName,
+          ),
+        ) as number;
+        return matchedIndex >= 0 ? filteredEntries[matchedIndex] : undefined;
+      };
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation.
+  }
+  return (entries, selector, opts) =>
+    entries.find((entry) => matchesManifestEntry(entry, selector, opts));
+}
+
+const findMatchingManifestEntryImpl = await loadManifestMatcher();
+
 export function findMatchingManifestEntry(
   entries: QuarantineManifestEntry[],
   selector: QuarantineManifestSelector,
   opts?: FindMatchingManifestEntryOpts,
 ): QuarantineManifestEntry | undefined {
-  return entries.find((entry) => matchesManifestEntry(entry, selector, opts));
+  return findMatchingManifestEntryImpl(entries, selector, opts);
 }
 
 export function isManifestQuarantined(

@@ -261,4 +261,28 @@ describe("quarantine manifest", () => {
       }),
     ).toBe(false);
   });
+
+  it("normalizes Windows-style spec paths before matching", () => {
+    const entry: QuarantineManifestEntry = {
+      id: "paint-vrt-local-assets",
+      taskId: "paint-vrt",
+      spec: "tests/paint-vrt.spec.ts",
+      titlePattern: "optional snapshot asset",
+      mode: "skip",
+      scope: "environment",
+      owner: "@mizchi",
+      reason: "optional asset is absent on local runs",
+      condition: "missing local snapshot asset",
+      introducedAt: "2026-04-01",
+      expiresAt: "2026-04-30",
+    };
+
+    expect(
+      isManifestQuarantined([entry], {
+        suite: "tests\\paint-vrt.spec.ts",
+        testName: "optional snapshot asset",
+        taskId: "paint-vrt",
+      }),
+    ).toBe(true);
+  });
 });

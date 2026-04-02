@@ -65,6 +65,78 @@ export interface RunConfigCheckOpts {
   taskDefinitions?: TaskDefinition[];
 }
 
+interface ConfigCheckListedTestInput {
+  suite: string;
+  task_id: string;
+  filter?: string;
+}
+
+interface ConfigCheckTaskDefinitionInput {
+  task_id: string;
+  node?: string;
+  needs: string[];
+  srcs: string[];
+}
+
+interface ConfigOwnershipClaimOutput {
+  task_id: string;
+  filter: string | null;
+  test_count: number;
+}
+
+interface ConfigOwnershipEntryOutput {
+  spec: string;
+  kind: OwnershipEntry["kind"];
+  owners: ConfigOwnershipClaimOutput[];
+}
+
+interface ConfigCheckIssueOutput {
+  code: ConfigCheckIssue["code"];
+  spec: string;
+  detail: string;
+}
+
+interface ConfigTaskSummaryOutput {
+  task_id: string;
+  node: string | null;
+  spec_count: number;
+  test_count: number;
+  filter_count: number;
+  needs_count: number;
+  src_count: number;
+}
+
+interface ConfigCheckSummaryOutput {
+  task_count: number;
+  spec_count: number;
+  duplicate_ownership_count: number;
+  split_ownership_count: number;
+  unmanaged_spec_count: number;
+  error_count: number;
+  warning_count: number;
+}
+
+interface ConfigCheckCoreOutput {
+  summary: ConfigCheckSummaryOutput;
+  ownership: ConfigOwnershipEntryOutput[];
+  tasks: ConfigTaskSummaryOutput[];
+  errors: ConfigCheckIssueOutput[];
+  warnings: ConfigCheckIssueOutput[];
+}
+
+interface ConfigCheckCoreExports {
+  run_config_check_json?: (
+    listedTestsJson: string,
+    discoveredSpecsJson: string,
+    taskDefinitionsJson: string,
+  ) => string;
+}
+
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
+
 function normalizePath(path: string): string {
   return path.replaceAll("\\", "/");
 }
@@ -103,7 +175,7 @@ function classifyOwnership(claims: OwnershipClaim[]): OwnershipEntry["kind"] {
   return "split";
 }
 
-export function runConfigCheck(opts: RunConfigCheckOpts): ConfigCheckReport {
+function runConfigCheckFallback(opts: RunConfigCheckOpts): ConfigCheckReport {
   const ownershipIndex = new Map<string, Map<string, OwnershipClaim>>();
   const taskSpecs = new Map<string, Set<string>>();
   const taskFilters = new Map<string, Set<string>>();
@@ -220,6 +292,119 @@ export function runConfigCheck(opts: RunConfigCheckOpts): ConfigCheckReport {
     errors,
     warnings,
   };
+}
+
+function toCoreListedTest(test: TestId): ConfigCheckListedTestInput {
+  const base: ConfigCheckListedTestInput = {
+    suite: normalizePath(test.suite),
+    task_id: test.taskId ?? normalizePath(test.suite),
+  };
+  if (test.filter != null) {
+    base.filter = test.filter;
+  }
+  return base;
+}
+
+function toCoreTaskDefinition(
+  task: TaskDefinition,
+): ConfigCheckTaskDefinitionInput {
+  const base: ConfigCheckTaskDefinitionInput = {
+    task_id: task.taskId,
+    needs: [...task.needs],
+    srcs: [...task.srcs],
+  };
+  if (task.node != null) {
+    base.node = task.node;
+  }
+  return base;
+}
+
+function fromCoreOwnershipClaim(
+  claim: ConfigOwnershipClaimOutput,
+): OwnershipClaim {
+  return {
+    taskId: claim.task_id,
+    filter: claim.filter,
+    testCount: claim.test_count,
+  };
+}
+
+function fromCoreOwnershipEntry(
+  entry: ConfigOwnershipEntryOutput,
+): OwnershipEntry {
+  return {
+    spec: entry.spec,
+    kind: entry.kind,
+    owners: entry.owners.map(fromCoreOwnershipClaim),
+  };
+}
+
+function fromCoreIssue(issue: ConfigCheckIssueOutput): ConfigCheckIssue {
+  return {
+    code: issue.code,
+    spec: issue.spec,
+    detail: issue.detail,
+  };
+}
+
+function fromCoreTaskSummary(task: ConfigTaskSummaryOutput): TaskSummary {
+  return {
+    taskId: task.task_id,
+    node: task.node,
+    specCount: task.spec_count,
+    testCount: task.test_count,
+    filterCount: task.filter_count,
+    needsCount: task.needs_count,
+    srcCount: task.src_count,
+  };
+}
+
+function fromCoreReport(output: ConfigCheckCoreOutput): ConfigCheckReport {
+  return {
+    summary: {
+      taskCount: output.summary.task_count,
+      specCount: output.summary.spec_count,
+      duplicateOwnershipCount: output.summary.duplicate_ownership_count,
+      splitOwnershipCount: output.summary.split_ownership_count,
+      unmanagedSpecCount: output.summary.unmanaged_spec_count,
+      errorCount: output.summary.error_count,
+      warningCount: output.summary.warning_count,
+    },
+    ownership: output.ownership.map(fromCoreOwnershipEntry),
+    tasks: output.tasks.map(fromCoreTaskSummary),
+    errors: output.errors.map(fromCoreIssue),
+    warnings: output.warnings.map(fromCoreIssue),
+  };
+}
+
+async function loadConfigCheckRunner(): Promise<
+  (opts: RunConfigCheckOpts) => ConfigCheckReport
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ConfigCheckCoreExports;
+    if (typeof mod.run_config_check_json === "function") {
+      return (opts) =>
+        fromCoreReport(
+          JSON.parse(
+            mod.run_config_check_json!(
+              JSON.stringify(opts.listedTests.map(toCoreListedTest)),
+              JSON.stringify(opts.discoveredSpecs.map(normalizePath)),
+              JSON.stringify((opts.taskDefinitions ?? []).map(toCoreTaskDefinition)),
+            ),
+          ) as ConfigCheckCoreOutput,
+        );
+    }
+  } catch {
+    // Fall back to the TypeScript implementation when the MoonBit build is unavailable.
+  }
+
+  return runConfigCheckFallback;
+}
+
+const runConfigCheckImpl = await loadConfigCheckRunner();
+
+export function runConfigCheck(opts: RunConfigCheckOpts): ConfigCheckReport {
+  return runConfigCheckImpl(opts);
 }
 
 function formatSummaryList(report: ConfigCheckReport): string[] {

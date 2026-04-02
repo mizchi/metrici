@@ -47,7 +47,7 @@
     - affected expansion / reverse deps / topo sort / test pattern 収集は MoonBit を正本にする
     - adapter は TS に残し、IR を MoonBit core に渡す
 
-- [ ] normalized summary / diff / aggregate core
+- [x] normalized summary / diff / aggregate core
   - 元 issue: #6, #7
   - 細分類:
     - `core-contract`: report summary/diff/aggregate input/output
@@ -62,11 +62,11 @@
     - summary reduction と base/head diff、aggregate totals は MoonBit 候補
     - artifact I/O と markdown rendering は TS に残す
   - 進捗:
+    - `report summary` の reducer は `src/core/src/report_summary_core/` に移行済み
     - `report diff` の classifier は `src/core/src/report_diff_core/` に移行済み
     - `report aggregate` の totals / unstable reducer は `src/core/src/report_aggregate_core/` に移行済み
-    - 残りの本命は `summary reduction`
 
-- [ ] quarantine policy evaluation core
+- [x] quarantine policy evaluation core
   - 元 issue: #5, #9
   - 細分類:
     - `core-contract`: `task/spec/titlePattern/variant/mode` の match input
@@ -79,8 +79,12 @@
   - 方針:
     - `task/spec/titlePattern/variant` に対する match と mode 判定は MoonBit 候補
     - manifest parse と runtime glue は TS に残す
+  - 進捗:
+    - `flaker-quarantine-summary-core` の ownership / expiry / mode-scope reducer は `src/core/src/quarantine_core/` に移行済み
+    - runtime match (`task/spec/titlePattern`) は `src/core/src/quarantine_core/` に移行済み
+    - blocking exit などの mode decision は `src/core/src/quarantine_core/` に移行済み
 
-- [ ] config ownership analysis core
+- [x] config ownership analysis core
   - 元 issue: #4
   - 細分類:
     - `core-contract`: task/spec/filter ownership input
@@ -91,6 +95,9 @@
   - 方針:
     - duplicate ownership / split ownership / unmanaged spec の判定ロジックは MoonBit 候補
     - filesystem scan と runner/listTests は TS に残す
+  - 進捗:
+    - duplicate ownership / split ownership / unmanaged spec / task summary reducer は `src/core/src/config_check_core/` に移行済み
+    - filesystem scan と bitflow task definition 読み込み、report formatting は TS shell を維持
 
 ### 分類 B: hybrid のまま進める機能
 
@@ -120,7 +127,7 @@
     - adapter 境界の正規化は TS 維持
     - 将来的に stable ID の canonical hash/normalization は MoonBit 化を検討
 
-- [ ] eval / KPI aggregation
+- [x] eval / KPI aggregation
   - crater dogfood で追加された predictive KPI を含む
   - 細分類:
     - `core-contract`: commit/local/ci comparison input
@@ -131,6 +138,9 @@
   - 方針:
     - commit 単位の集計や confusion matrix は pure logic なので MoonBit 候補
     - DB query と CLI formatting は TS に残す
+  - 進捗:
+    - sampling KPI の commit matching / confusion matrix / conditional rate / sample ratio reducer は `src/core/src/eval_core/` に移行済み
+    - DB query と health score / markdown formatting は TS shell を維持
 
 ### 分類 C: TS shell に残す
 
@@ -151,8 +161,7 @@
 1. `report summary reduction` を `core-reducer` として MoonBit に移す
 2. `quarantine match / mode 判定` を `core-policy` として MoonBit に移す
 3. `config ownership analysis` を `core-policy` として MoonBit に移す
-4. `eval / KPI aggregation` を `core-reducer` として MoonBit に移す
-5. `affected explain` の selection 判定だけを MoonBit に寄せ、explain payload は TS に残す
+4. `affected explain` の selection 判定だけを MoonBit に寄せ、explain payload は TS に残す
 
 ## 完了済み
 - [x] MoonBit 未ビルド時でも affected target を解決できる TypeScript fallback を実装

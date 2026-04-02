@@ -150,4 +150,40 @@ describe("withQuarantineRuntime", () => {
     });
     expect(result.results[0].errorMessage).toContain("known-safari-bug");
   });
+
+  it("preserves the fallback exit code when the runner produced no results", async () => {
+    const baseRunner = makeRunner(async () => ({
+      exitCode: 7,
+      results: [],
+      durationMs: 100,
+      stdout: "",
+      stderr: "runner bootstrap failed",
+    }));
+
+    const entry: QuarantineManifestEntry = {
+      id: "known-safari-bug",
+      taskId: "browser-e2e",
+      spec: "tests/known-bugs.spec.ts",
+      titlePattern: "^fails on safari$",
+      mode: "allow_failure",
+      scope: "expected_failure",
+      owner: "@mizchi",
+      reason: "upstream browser bug",
+      condition: "Safari 18 canvas regression",
+      introducedAt: "2026-04-01",
+      expiresAt: "2026-04-30",
+    };
+
+    const runner = withQuarantineRuntime(baseRunner, [entry]);
+    const result = await runner.execute([
+      {
+        suite: "tests/other.spec.ts",
+        testName: "does not match quarantine",
+        taskId: "browser-e2e",
+      },
+    ]);
+
+    expect(result.results).toEqual([]);
+    expect(result.exitCode).toBe(7);
+  });
 });

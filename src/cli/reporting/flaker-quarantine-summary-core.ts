@@ -15,6 +15,10 @@ import {
 import { compileTitlePattern } from "./flaker-quarantine-match.js";
 
 const DEFAULT_EXPIRES_SOON_DAYS = 7;
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
 
 export interface FlakerQuarantineTaskOwnership {
   id: string;
@@ -27,6 +31,65 @@ export interface BuildFlakerQuarantineSummaryInputs {
   existingSpecs: Set<string>;
   now?: Date;
   expiresSoonDays?: number;
+}
+
+interface QuarantineEntryInput {
+  id: string;
+  task_id: string;
+  spec: string;
+  title_pattern: string;
+  mode: FlakerQuarantineMode;
+  scope: FlakerQuarantineScope;
+  owner: string;
+  reason: string;
+  condition: string;
+  introduced_at: string;
+  expires_at: string;
+  tracking_issue?: string;
+}
+
+interface QuarantineIssueOutput {
+  severity: FlakerIssue["severity"];
+  code: string;
+  message: string;
+  task_id: string | null;
+  spec: string | null;
+}
+
+interface QuarantineModeCountsOutput {
+  skip: number;
+  allow_flaky: number;
+  allow_failure: number;
+}
+
+interface QuarantineScopeCountsOutput {
+  environment: number;
+  flaky: number;
+  expected_failure: number;
+}
+
+interface ResolvedQuarantineEntryOutput extends QuarantineEntryInput {
+  expiry_status: FlakerQuarantineExpiryStatus;
+  days_until_expiry: number | null;
+}
+
+interface QuarantineSummaryCoreOutput {
+  entry_count: number;
+  mode_counts: QuarantineModeCountsOutput;
+  scope_counts: QuarantineScopeCountsOutput;
+  entries: ResolvedQuarantineEntryOutput[];
+  errors: QuarantineIssueOutput[];
+  warnings: QuarantineIssueOutput[];
+}
+
+interface QuarantineCoreExports {
+  summarize_quarantine_json?: (
+    entriesJson: string,
+    tasksJson: string,
+    existingSpecsJson: string,
+    nowDate: string,
+    expiresSoonDays: number,
+  ) => string;
 }
 
 function createIssue(issue: FlakerIssue): FlakerIssue {
@@ -49,7 +112,7 @@ function buildScopeCounts(): Record<FlakerQuarantineScope, number> {
   };
 }
 
-export function buildFlakerQuarantineSummary(
+function buildFlakerQuarantineSummaryFallback(
   inputs: BuildFlakerQuarantineSummaryInputs,
 ): FlakerQuarantineSummary {
   const now = normalizeToUtcMidnight(inputs.now ?? new Date());
@@ -188,4 +251,99 @@ export function buildFlakerQuarantineSummary(
     errors,
     warnings,
   };
+}
+
+function mapEntryToCore(
+  entry: FlakerQuarantineConfig["entries"][number],
+): QuarantineEntryInput {
+  return {
+    id: entry.id,
+    task_id: entry.taskId,
+    spec: entry.spec,
+    title_pattern: entry.titlePattern,
+    mode: entry.mode,
+    scope: entry.scope,
+    owner: entry.owner,
+    reason: entry.reason,
+    condition: entry.condition,
+    introduced_at: entry.introducedAt,
+    expires_at: entry.expiresAt,
+    ...(entry.trackingIssue ? { tracking_issue: entry.trackingIssue } : {}),
+  };
+}
+
+function mapIssueFromCore(issue: QuarantineIssueOutput): FlakerIssue {
+  return {
+    severity: issue.severity,
+    code: issue.code,
+    message: issue.message,
+    ...(issue.task_id ? { taskId: issue.task_id } : {}),
+    ...(issue.spec ? { spec: issue.spec } : {}),
+  };
+}
+
+function mapEntryFromCore(
+  entry: ResolvedQuarantineEntryOutput,
+): FlakerResolvedQuarantineEntry {
+  return {
+    id: entry.id,
+    taskId: entry.task_id,
+    spec: entry.spec,
+    titlePattern: entry.title_pattern,
+    mode: entry.mode,
+    scope: entry.scope,
+    owner: entry.owner,
+    reason: entry.reason,
+    condition: entry.condition,
+    introducedAt: entry.introduced_at,
+    expiresAt: entry.expires_at,
+    ...(entry.tracking_issue ? { trackingIssue: entry.tracking_issue } : {}),
+    expiryStatus: entry.expiry_status,
+    daysUntilExpiry: entry.days_until_expiry,
+  };
+}
+
+async function loadQuarantineSummaryBuilder(): Promise<
+  (inputs: BuildFlakerQuarantineSummaryInputs) => FlakerQuarantineSummary
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineCoreExports;
+    if (typeof mod.summarize_quarantine_json === "function") {
+      return (inputs) => {
+        const now = normalizeToUtcMidnight(inputs.now ?? new Date());
+        const expiresSoonDays = inputs.expiresSoonDays ?? DEFAULT_EXPIRES_SOON_DAYS;
+        const output = JSON.parse(
+          mod.summarize_quarantine_json!(
+            JSON.stringify(inputs.quarantine.entries.map(mapEntryToCore)),
+            JSON.stringify(inputs.tasks),
+            JSON.stringify([...inputs.existingSpecs].sort()),
+            now.toISOString().slice(0, 10),
+            expiresSoonDays,
+          ),
+        ) as QuarantineSummaryCoreOutput;
+
+        return {
+          schemaVersion: 1,
+          generatedAt: new Date().toISOString(),
+          entryCount: output.entry_count,
+          modeCounts: output.mode_counts,
+          scopeCounts: output.scope_counts,
+          entries: output.entries.map(mapEntryFromCore),
+          errors: output.errors.map(mapIssueFromCore),
+          warnings: output.warnings.map(mapIssueFromCore),
+        };
+      };
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation.
+  }
+  return buildFlakerQuarantineSummaryFallback;
+}
+
+const buildFlakerQuarantineSummaryImpl = await loadQuarantineSummaryBuilder();
+
+export function buildFlakerQuarantineSummary(
+  inputs: BuildFlakerQuarantineSummaryInputs,
+): FlakerQuarantineSummary {
+  return buildFlakerQuarantineSummaryImpl(inputs);
 }

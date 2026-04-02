@@ -11,6 +11,24 @@ import type {
   TestId,
 } from "./types.js";
 
+interface QuarantineRuntimeResultInput {
+  status: TestCaseResult["status"];
+  quarantine_mode?: QuarantineManifestEntry["mode"];
+}
+
+interface QuarantineRuntimeCoreExports {
+  is_blocking_failure_json?: (resultJson: string) => string;
+  compute_quarantine_exit_code_json?: (
+    resultsJson: string,
+    fallbackExitCode: number,
+  ) => string;
+}
+
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
+
 function formatQuarantineMessage(entry: QuarantineManifestEntry): string {
   return `[quarantine:${entry.id}] mode=${entry.mode} owner=${entry.owner} reason=${entry.reason}`;
 }
@@ -104,6 +122,18 @@ function resolveRuntimeIdentity(
 }
 
 export function isBlockingFailure(result: TestCaseResult): boolean {
+  return quarantineRuntimeDecisions.isBlockingFailure(result);
+}
+
+function toCoreRuntimeResultInput(
+  result: TestCaseResult,
+): QuarantineRuntimeResultInput {
+  return result.quarantine?.mode
+    ? { status: result.status, quarantine_mode: result.quarantine.mode }
+    : { status: result.status };
+}
+
+function isBlockingFailureFallback(result: TestCaseResult): boolean {
   return (
     result.status === "failed" &&
     result.quarantine?.mode !== "allow_failure"
@@ -126,14 +156,63 @@ function annotateRuntimeResults(
   });
 }
 
-function computeExitCode(results: TestCaseResult[], fallbackExitCode: number): number {
-  if (results.some(isBlockingFailure)) {
+function computeExitCodeFallback(
+  results: TestCaseResult[],
+  fallbackExitCode: number,
+): number {
+  if (results.some(isBlockingFailureFallback)) {
     return 1;
   }
   if (results.length === 0) {
     return fallbackExitCode;
   }
   return 0;
+}
+
+async function loadQuarantineRuntimeDecisions(): Promise<{
+  isBlockingFailure: (result: TestCaseResult) => boolean;
+  computeExitCode: (
+    results: TestCaseResult[],
+    fallbackExitCode: number,
+  ) => number;
+}> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineRuntimeCoreExports;
+    if (
+      typeof mod.is_blocking_failure_json === "function" &&
+      typeof mod.compute_quarantine_exit_code_json === "function"
+    ) {
+      return {
+        isBlockingFailure(result) {
+          return JSON.parse(
+            mod.is_blocking_failure_json!(
+              JSON.stringify(toCoreRuntimeResultInput(result)),
+            ),
+          ) as boolean;
+        },
+        computeExitCode(results, fallbackExitCode) {
+          return JSON.parse(
+            mod.compute_quarantine_exit_code_json!(
+              JSON.stringify(results.map(toCoreRuntimeResultInput)),
+              fallbackExitCode,
+            ),
+          ) as number;
+        },
+      };
+    }
+  } catch {
+    // Fall back to the TypeScript runtime when the MoonBit build is unavailable.
+  }
+  return {
+    isBlockingFailure: isBlockingFailureFallback,
+    computeExitCode: computeExitCodeFallback,
+  };
+}
+
+const quarantineRuntimeDecisions = await loadQuarantineRuntimeDecisions();
+
+function computeExitCode(results: TestCaseResult[], fallbackExitCode: number): number {
+  return quarantineRuntimeDecisions.computeExitCode(results, fallbackExitCode);
 }
 
 export function withQuarantineRuntime(

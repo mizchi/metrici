@@ -82,6 +82,58 @@ interface CommitSignal {
   failureSignals: number;
 }
 
+interface EvalCommitSignalInput {
+  commit_sha: string;
+  run_kind: "local" | "ci";
+  run_count: number;
+  distinct_tests: number;
+  failure_signals: number;
+}
+
+interface SamplingKpiSignalOutput {
+  local_commits: number;
+  ci_when_local: number;
+  rate: number | null;
+}
+
+interface SamplingKpiMissesOutput {
+  local_pass_but_ci_fail: number;
+  local_fail_but_ci_pass: number;
+  false_negative_rate: number | null;
+  false_positive_rate: number | null;
+}
+
+interface SamplingKpiConfusionMatrixOutput {
+  true_positive: number;
+  false_positive: number;
+  false_negative: number;
+  true_negative: number;
+}
+
+interface SamplingKpiOutput {
+  matched_commits: number;
+  local_only_commits: number;
+  ci_only_commits: number;
+  avg_local_sample_size: number | null;
+  median_local_sample_size: number | null;
+  p95_local_sample_size: number | null;
+  avg_ci_test_count: number | null;
+  avg_sample_ratio: number | null;
+  pass_signal: SamplingKpiSignalOutput;
+  fail_signal: SamplingKpiSignalOutput;
+  misses: SamplingKpiMissesOutput;
+  confusion_matrix: SamplingKpiConfusionMatrixOutput;
+}
+
+interface EvalCoreExports {
+  build_sampling_kpi_json?: (rowsJson: string) => string;
+}
+
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
+
 function roundMetric(value: number): number {
   return Number(value.toFixed(1));
 }
@@ -117,7 +169,7 @@ function buildPredictiveSignalSummary(
   };
 }
 
-function buildSamplingKpi(rows: CommitSignal[]): SamplingKpiReport {
+function buildSamplingKpiFallback(rows: CommitSignal[]): SamplingKpiReport {
   const localByCommit = new Map<string, CommitSignal>();
   const ciByCommit = new Map<string, CommitSignal>();
 
@@ -228,6 +280,73 @@ function buildSamplingKpi(rows: CommitSignal[]): SamplingKpiReport {
     },
   };
 }
+
+function toCoreCommitSignal(row: CommitSignal): EvalCommitSignalInput {
+  return {
+    commit_sha: row.commitSha,
+    run_kind: row.runKind,
+    run_count: row.runCount,
+    distinct_tests: row.distinctTests,
+    failure_signals: row.failureSignals,
+  };
+}
+
+function fromCoreSamplingKpi(output: SamplingKpiOutput): SamplingKpiReport {
+  return {
+    matchedCommits: output.matched_commits,
+    localOnlyCommits: output.local_only_commits,
+    ciOnlyCommits: output.ci_only_commits,
+    avgLocalSampleSize: output.avg_local_sample_size,
+    medianLocalSampleSize: output.median_local_sample_size,
+    p95LocalSampleSize: output.p95_local_sample_size,
+    avgCiTestCount: output.avg_ci_test_count,
+    avgSampleRatio: output.avg_sample_ratio,
+    passSignal: {
+      localPassCommits: output.pass_signal.local_commits,
+      ciPassWhenLocalPass: output.pass_signal.ci_when_local,
+      rate: output.pass_signal.rate,
+    },
+    failSignal: {
+      localFailCommits: output.fail_signal.local_commits,
+      ciFailWhenLocalFail: output.fail_signal.ci_when_local,
+      rate: output.fail_signal.rate,
+    },
+    misses: {
+      localPassButCiFail: output.misses.local_pass_but_ci_fail,
+      localFailButCiPass: output.misses.local_fail_but_ci_pass,
+      falseNegativeRate: output.misses.false_negative_rate,
+      falsePositiveRate: output.misses.false_positive_rate,
+    },
+    confusionMatrix: {
+      truePositive: output.confusion_matrix.true_positive,
+      falsePositive: output.confusion_matrix.false_positive,
+      falseNegative: output.confusion_matrix.false_negative,
+      trueNegative: output.confusion_matrix.true_negative,
+    },
+  };
+}
+
+async function loadSamplingKpiBuilder(): Promise<
+  (rows: CommitSignal[]) => SamplingKpiReport
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as EvalCoreExports;
+    if (typeof mod.build_sampling_kpi_json === "function") {
+      return (rows) =>
+        fromCoreSamplingKpi(
+          JSON.parse(
+            mod.build_sampling_kpi_json!(JSON.stringify(rows.map(toCoreCommitSignal))),
+          ) as SamplingKpiOutput,
+        );
+    }
+  } catch {
+    // Fall back to the TypeScript reducer when the MoonBit build is unavailable.
+  }
+
+  return buildSamplingKpiFallback;
+}
+
+const buildSamplingKpi = await loadSamplingKpiBuilder();
 
 export async function runEval(opts: { store: MetricStore; windowDays?: number }): Promise<EvalReport> {
   const { store } = opts;

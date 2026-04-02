@@ -118,6 +118,14 @@ interface ReportDiffStatusInput {
   head_status: string;
 }
 
+interface ReportSummaryTestInput {
+  test_id: string;
+  suite: string;
+  status: string;
+  duration_ms: number;
+  retry_count: number;
+}
+
 interface ReportTotalsInput {
   total: number;
   passed: number;
@@ -160,7 +168,19 @@ interface ReportAggregateOutput {
   unstable: ReportAggregateUnstableBuckets[];
 }
 
+interface ReportFileTotalsOutput {
+  suite: string;
+  totals: ReportTotalsInput;
+}
+
+interface ReportSummaryOutput {
+  totals: ReportTotalsInput;
+  file_totals: ReportFileTotalsOutput[];
+  unstable_test_ids: string[];
+}
+
 interface ReportDiffCoreExports {
+  summarize_report_json?: (testsJson: string) => string;
   classify_report_diff_json?: (inputsJson: string) => string;
   aggregate_report_json?: (shardsJson: string) => string;
 }
@@ -286,6 +306,45 @@ function aggregateReportFallback(
   };
 }
 
+function summarizeReportFallback(
+  tests: ReportSummaryTestInput[],
+): ReportSummaryOutput {
+  const totals = emptyTotals();
+  const fileTotals = new Map<string, ReportTotals>();
+  const unstableTestIds: string[] = [];
+
+  for (const test of tests) {
+    const entry = {
+      status: test.status as ReportTestSummary["status"],
+      retryCount: test.retry_count,
+      durationMs: test.duration_ms,
+    };
+    addToTotals(totals, entry);
+    const existing = fileTotals.get(test.suite);
+    if (existing) {
+      addToTotals(existing, entry);
+    } else {
+      const next = emptyTotals();
+      addToTotals(next, entry);
+      fileTotals.set(test.suite, next);
+    }
+    if (test.status === "failed" || test.status === "flaky") {
+      unstableTestIds.push(test.test_id);
+    }
+  }
+
+  return {
+    totals: toCoreTotals(totals),
+    file_totals: [...fileTotals.entries()]
+      .map(([suite, summaryTotals]) => ({
+        suite,
+        totals: toCoreTotals(summaryTotals),
+      }))
+      .sort((a, b) => a.suite.localeCompare(b.suite)),
+    unstable_test_ids: unstableTestIds,
+  };
+}
+
 async function loadReportDiffClassifier(): Promise<
   (inputs: ReportDiffStatusInput[]) => ReportDiffBuckets
 > {
@@ -302,6 +361,23 @@ async function loadReportDiffClassifier(): Promise<
 }
 
 const classifyReportDiff = await loadReportDiffClassifier();
+
+async function loadReportSummaryReducer(): Promise<
+  (tests: ReportSummaryTestInput[]) => ReportSummaryOutput
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    if (typeof mod.summarize_report_json === "function") {
+      return (tests) =>
+        JSON.parse(mod.summarize_report_json!(JSON.stringify(tests))) as ReportSummaryOutput;
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation.
+  }
+  return summarizeReportFallback;
+}
+
+const summarizeReport = await loadReportSummaryReducer();
 
 async function loadReportAggregateReducer(): Promise<
   (shards: ReportAggregateShardInput[]) => ReportAggregateOutput
@@ -435,28 +511,25 @@ export function summarizeResults(
   adapter: string,
 ): NormalizedReportSummary {
   const tests = sortTests(results.map(summarizeTest));
-  const totals = emptyTotals();
-  const fileTotals = new Map<string, ReportTotals>();
-
-  for (const test of tests) {
-    addToTotals(totals, test);
-    const existing = fileTotals.get(test.suite);
-    if (existing) {
-      addToTotals(existing, test);
-    } else {
-      const next = emptyTotals();
-      addToTotals(next, test);
-      fileTotals.set(test.suite, next);
-    }
-  }
+  const reduced = summarizeReport(
+    tests.map((test) => ({
+      test_id: test.testId,
+      suite: test.suite,
+      status: test.status,
+      duration_ms: test.durationMs,
+      retry_count: test.retryCount,
+    })),
+  );
+  const unstableIds = new Set(reduced.unstable_test_ids);
 
   return {
     adapter,
-    totals,
-    files: [...fileTotals.entries()]
-      .map(([suite, totals]) => ({ suite, totals }))
-      .sort((a, b) => a.suite.localeCompare(b.suite)),
-    unstable: tests.filter((test) => test.status === "failed" || test.status === "flaky"),
+    totals: fromCoreTotals(reduced.totals),
+    files: reduced.file_totals.map((entry) => ({
+      suite: entry.suite,
+      totals: fromCoreTotals(entry.totals),
+    })),
+    unstable: tests.filter((test) => unstableIds.has(test.testId)),
     tests,
   };
 }

@@ -138,3 +138,109 @@ pub fn aggregate_report_json(shards_json : String) -> String {
   let result = @report_aggregate_core.aggregate_report(shards)
   result.to_json().stringify()
 }
+
+///|
+pub fn summarize_report_json(tests_json : String) -> String {
+  let tests : Array[@types.ReportSummaryTestInput] = try! @json.from_json(
+    try! @json.parse(tests_json),
+  )
+  let result = @report_summary_core.summarize_report(tests)
+  result.to_json().stringify()
+}
+
+///|
+pub fn summarize_quarantine_json(
+  entries_json : String,
+  tasks_json : String,
+  existing_specs_json : String,
+  now_date : String,
+  expires_soon_days : Int,
+) -> String {
+  let entries : Array[@types.QuarantineEntryInput] = try! @json.from_json(
+    try! @json.parse(entries_json),
+  )
+  let tasks : Array[@types.QuarantineTaskOwnershipInput] = try! @json.from_json(
+    try! @json.parse(tasks_json),
+  )
+  let existing_specs : Array[String] = try! @json.from_json(
+    try! @json.parse(existing_specs_json),
+  )
+  let result = @quarantine_core.summarize_quarantine(
+    entries,
+    tasks,
+    existing_specs,
+    now_date,
+    expires_soon_days,
+  )
+  result.to_json().stringify()
+}
+
+///|
+pub fn find_matching_quarantine_json(
+  entries_json : String,
+  task_id : String,
+  spec : String,
+  title : String,
+) -> String {
+  let entries : Array[@types.QuarantineEntryInput] = try! @json.from_json(
+    try! @json.parse(entries_json),
+  )
+  let result = @quarantine_core.find_matching_quarantine(entries, task_id, spec, title)
+  result.to_json().stringify()
+}
+
+///|
+pub fn is_blocking_failure_json(result_json : String) -> String {
+  let result : @types.QuarantineRuntimeResultInput = try! @json.from_json(
+    try! @json.parse(result_json),
+  )
+  let blocking = @quarantine_core.is_blocking_failure(result)
+  blocking.to_json().stringify()
+}
+
+///|
+pub fn compute_quarantine_exit_code_json(
+  results_json : String,
+  fallback_exit_code : Int,
+) -> String {
+  let results : Array[@types.QuarantineRuntimeResultInput] = try! @json.from_json(
+    try! @json.parse(results_json),
+  )
+  let exit_code = @quarantine_core.compute_quarantine_exit_code(
+    results,
+    fallback_exit_code,
+  )
+  exit_code.to_json().stringify()
+}
+
+///|
+pub fn run_config_check_json(
+  listed_tests_json : String,
+  discovered_specs_json : String,
+  task_definitions_json : String,
+) -> String {
+  let listed_tests : Array[@types.ConfigCheckListedTestInput] = try! @json.from_json(
+    try! @json.parse(listed_tests_json),
+  )
+  let discovered_specs : Array[String] = try! @json.from_json(
+    try! @json.parse(discovered_specs_json),
+  )
+  let task_definitions : Array[@types.ConfigCheckTaskDefinitionInput] = try! @json.from_json(
+    try! @json.parse(task_definitions_json),
+  )
+  let result = @config_check_core.run_config_check(
+    listed_tests,
+    discovered_specs,
+    task_definitions,
+  )
+  result.to_json().stringify()
+}
+
+///|
+pub fn build_sampling_kpi_json(rows_json : String) -> String {
+  let rows : Array[@types.EvalCommitSignalInput] = try! @json.from_json(
+    try! @json.parse(rows_json),
+  )
+  let result = @eval_core.build_sampling_kpi(rows)
+  result.to_json().stringify()
+}
