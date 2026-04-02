@@ -1,4 +1,5 @@
 import type { TestCaseResult } from "../adapters/types.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 import { normalizeVariant, resolveTestIdentity } from "../identity.js";
 import {
   findMatchingManifestEntry,
@@ -23,11 +24,6 @@ interface QuarantineRuntimeCoreExports {
     fallbackExitCode: number,
   ) => string;
 }
-
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
 
 function formatQuarantineMessage(entry: QuarantineManifestEntry): string {
   return `[quarantine:${entry.id}] mode=${entry.mode} owner=${entry.owner} reason=${entry.reason}`;
@@ -177,7 +173,7 @@ async function loadQuarantineRuntimeDecisions(): Promise<{
   ) => number;
 }> {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineRuntimeCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as QuarantineRuntimeCoreExports;
     if (
       typeof mod.is_blocking_failure_json === "function" &&
       typeof mod.compute_quarantine_exit_code_json === "function"

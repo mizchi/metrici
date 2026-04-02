@@ -40,7 +40,7 @@ test "detect_flaky finds flaky tests" {
     threshold: 1.0,
     min_runs: 3,
   }
-  let output = @flaky_detector.detect_flaky(input)
+  let output = @flaky.detect_flaky(input)
   assert_eq(output.flaky_tests.length(), 1)
   assert_eq(output.flaky_tests[0].test_name, "should redirect")
   assert_eq(output.flaky_tests[0].flaky_rate, 50.0)
@@ -67,7 +67,7 @@ test "detect_flaky respects min_runs" {
     threshold: 1.0,
     min_runs: 5,
   }
-  let output = @flaky_detector.detect_flaky(input)
+  let output = @flaky.detect_flaky(input)
   assert_eq(output.flaky_tests.length(), 0)
 }
 
@@ -93,6 +93,6 @@ test "detect_flaky respects threshold" {
     threshold: 2.0,
     min_runs: 1,
   }
-  let output = @flaky_detector.detect_flaky(input)
+  let output = @flaky.detect_flaky(input)
   assert_eq(output.flaky_tests.length(), 0)
 }

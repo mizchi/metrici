@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { TestCaseResult } from "../adapters/types.js";
 import { createTestResultAdapter } from "../adapters/index.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 import { normalizeVariant, resolveTestIdentity } from "../identity.js";
 
 export interface ReportTotals {
@@ -185,11 +186,6 @@ interface ReportDiffCoreExports {
   aggregate_report_json?: (shardsJson: string) => string;
 }
 
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
-
 function classifyReportDiffFallback(
   inputs: ReportDiffStatusInput[],
 ): ReportDiffBuckets {
@@ -349,7 +345,7 @@ async function loadReportDiffClassifier(): Promise<
   (inputs: ReportDiffStatusInput[]) => ReportDiffBuckets
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
     if (typeof mod.classify_report_diff_json === "function") {
       return (inputs) =>
         JSON.parse(mod.classify_report_diff_json!(JSON.stringify(inputs))) as ReportDiffBuckets;
@@ -366,7 +362,7 @@ async function loadReportSummaryReducer(): Promise<
   (tests: ReportSummaryTestInput[]) => ReportSummaryOutput
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
     if (typeof mod.summarize_report_json === "function") {
       return (tests) =>
         JSON.parse(mod.summarize_report_json!(JSON.stringify(tests))) as ReportSummaryOutput;
@@ -383,7 +379,7 @@ async function loadReportAggregateReducer(): Promise<
   (shards: ReportAggregateShardInput[]) => ReportAggregateOutput
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
     if (typeof mod.aggregate_report_json === "function") {
       return (shards) =>
         JSON.parse(mod.aggregate_report_json!(JSON.stringify(shards))) as ReportAggregateOutput;

@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mizchi/flaker/analysis/sampling"
+
+import {
+  "mizchi/flaker/contracts",
+}
+
+// Values
+pub fn sample_hybrid(Array[@contracts.TestMeta], affected_suites~ : Array[String], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+pub fn sample_random(Array[@contracts.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+pub fn sample_weighted(Array[@contracts.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+

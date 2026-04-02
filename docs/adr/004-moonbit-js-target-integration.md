@@ -18,11 +18,12 @@ metrici のコア計算（flaky 検出、サンプリング、依存分析）を
 
 ```
 src/core/ (MoonBit)
-├── src/types/           共有型定義
-├── src/flaky_detector/  閾値ベース flaky 検出
-├── src/sampler/         random / weighted / hybrid サンプリング
-├── src/affected/        bitflow ライブラリ直接呼び出し
-└── src/main/            JS FFI export (ESM)
+├── contracts/           共有 JSON 契約
+├── analysis/            flaky / sampling / affected / graph
+├── reporting/           summary / diff / aggregate
+├── policy/              quarantine / config ownership
+├── metrics/             eval / KPI reducer
+└── bridge/              JS FFI export (ESM)
 
 src/cli/core/loader.ts (TypeScript)
 ├── loadCore()          MoonBit JS を dynamic import、失敗時は TS fallback
@@ -79,7 +80,7 @@ bitflow (mizchi/bitflow) は MoonBit 製。`moon.mod.json` の deps に追加す
 
 ## 結果
 
-- `moon build --target js` で `src/core/_build/js/debug/build/src/main/main.js` を生成
+- `moon build --target js` で `src/core/_build/js/debug/build/bridge/bridge.js` を生成
 - `loadCore()` が MoonBit JS を優先 import、失敗時は TS fallback
 - MoonBit 10 テスト + TypeScript 155 テスト = 165 テストで品質担保
 - bitflow のネイティブ統合により、Starlark ワークフロー解析がインプロセスで完結

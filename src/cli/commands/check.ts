@@ -5,6 +5,7 @@ import {
   statSync,
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 import type { TestId } from "../runners/types.js";
 import { parseBitflowWorkflowTasks } from "../resolvers/bitflow-workflow.js";
 
@@ -131,11 +132,6 @@ interface ConfigCheckCoreExports {
     taskDefinitionsJson: string,
   ) => string;
 }
-
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
 
 function normalizePath(path: string): string {
   return path.replaceAll("\\", "/");
@@ -381,7 +377,7 @@ async function loadConfigCheckRunner(): Promise<
   (opts: RunConfigCheckOpts) => ConfigCheckReport
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ConfigCheckCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ConfigCheckCoreExports;
     if (typeof mod.run_config_check_json === "function") {
       return (opts) =>
         fromCoreReport(

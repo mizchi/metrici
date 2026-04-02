@@ -1,4 +1,5 @@
 import type { DependencyGraph, GraphNode } from "../graph/types.js";
+import { MOONBIT_JS_BRIDGE_URL } from "./build-artifact.js";
 import {
   buildReverseDeps as buildReverseDepsFallback,
   expandTransitive as expandTransitiveFallback,
@@ -284,15 +285,11 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
 }
 
 let cachedCore: MetriciCore | undefined;
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
 
 export async function loadCore(): Promise<MetriciCore> {
   if (cachedCore) return cachedCore;
   try {
-    const mbtPath = MOONBIT_JS_BUILD_URL.href;
+    const mbtPath = MOONBIT_JS_BRIDGE_URL.href;
     const mbt = (await import(mbtPath)) as MbtJsExports;
     if (
       typeof mbt.detect_flaky_json === "function" &&
@@ -329,7 +326,7 @@ export async function loadCore(): Promise<MetriciCore> {
 
 export async function hasMoonBitJsBuild(): Promise<boolean> {
   try {
-    await access(MOONBIT_JS_BUILD_URL);
+    await access(MOONBIT_JS_BRIDGE_URL);
     return true;
   } catch {
     return false;

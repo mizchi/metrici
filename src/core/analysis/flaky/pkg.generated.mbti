@@ -1,12 +1,12 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "mizchi/metrici_core/src/flaky_detector"
+package "mizchi/flaker/analysis/flaky"
 
 import {
-  "mizchi/metrici_core/src/types",
+  "mizchi/flaker/contracts",
 }
 
 // Values
-pub fn detect_flaky(@types.DetectInput) -> @types.DetectOutput
+pub fn detect_flaky(@contracts.DetectInput) -> @contracts.DetectOutput
 
 // Errors
 

@@ -1,4 +1,5 @@
 import type { MetricStore } from "../storage/types.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 
 export interface EvalReport {
   dataSufficiency: {
@@ -128,11 +129,6 @@ interface SamplingKpiOutput {
 interface EvalCoreExports {
   build_sampling_kpi_json?: (rowsJson: string) => string;
 }
-
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
 
 function roundMetric(value: number): number {
   return Number(value.toFixed(1));
@@ -330,7 +326,7 @@ async function loadSamplingKpiBuilder(): Promise<
   (rows: CommitSignal[]) => SamplingKpiReport
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as EvalCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as EvalCoreExports;
     if (typeof mod.build_sampling_kpi_json === "function") {
       return (rows) =>
         fromCoreSamplingKpi(

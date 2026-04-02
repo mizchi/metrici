@@ -1,5 +1,4 @@
 import {
-  "mizchi/flaker/src/types",
+  "mizchi/flaker/contracts" @types,
   "moonbitlang/core/string" @string,
 }
-

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { MOONBIT_JS_BRIDGE_URL } from "./core/build-artifact.js";
 import { resolveTestIdentity } from "./identity.js";
 
 export type QuarantineMode = "skip" | "allow_flaky" | "allow_failure";
@@ -99,11 +100,6 @@ const DEFAULT_MANIFEST_FILES = [
   "flaker.quarantine.json",
   "flaker-quarantine.json",
 ] as const;
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
-
 const QUARANTINE_MODES = new Set<QuarantineMode>([
   "skip",
   "allow_flaky",
@@ -373,7 +369,7 @@ async function loadManifestMatcher(): Promise<
   ) => QuarantineManifestEntry | undefined
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineMatchExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as QuarantineMatchExports;
     if (typeof mod.find_matching_quarantine_json === "function") {
       return (entries, selector, opts) => {
         const filteredEntries = opts?.modes

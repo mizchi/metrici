@@ -42,7 +42,7 @@
     - `core-reducer`: affected expansion / reverse deps / topo sort / test pattern 収集
   - 対応コード:
     - `src/cli/graph/analyzer.ts`
-    - `src/core/src/graph_core/`
+    - `src/core/analysis/graph/`
   - 方針:
     - affected expansion / reverse deps / topo sort / test pattern 収集は MoonBit を正本にする
     - adapter は TS に残し、IR を MoonBit core に渡す
@@ -62,9 +62,9 @@
     - summary reduction と base/head diff、aggregate totals は MoonBit 候補
     - artifact I/O と markdown rendering は TS に残す
   - 進捗:
-    - `report summary` の reducer は `src/core/src/report_summary_core/` に移行済み
-    - `report diff` の classifier は `src/core/src/report_diff_core/` に移行済み
-    - `report aggregate` の totals / unstable reducer は `src/core/src/report_aggregate_core/` に移行済み
+    - `report summary` の reducer は `src/core/reporting/summary/` に移行済み
+    - `report diff` の classifier は `src/core/reporting/diff/` に移行済み
+    - `report aggregate` の totals / unstable reducer は `src/core/reporting/aggregate/` に移行済み
 
 - [x] quarantine policy evaluation core
   - 元 issue: #5, #9
@@ -80,9 +80,9 @@
     - `task/spec/titlePattern/variant` に対する match と mode 判定は MoonBit 候補
     - manifest parse と runtime glue は TS に残す
   - 進捗:
-    - `flaker-quarantine-summary-core` の ownership / expiry / mode-scope reducer は `src/core/src/quarantine_core/` に移行済み
-    - runtime match (`task/spec/titlePattern`) は `src/core/src/quarantine_core/` に移行済み
-    - blocking exit などの mode decision は `src/core/src/quarantine_core/` に移行済み
+    - `flaker-quarantine-summary-core` の ownership / expiry / mode-scope reducer は `src/core/policy/quarantine/` に移行済み
+    - runtime match (`task/spec/titlePattern`) は `src/core/policy/quarantine/` に移行済み
+    - blocking exit などの mode decision は `src/core/policy/quarantine/` に移行済み
 
 - [x] config ownership analysis core
   - 元 issue: #4
@@ -96,7 +96,7 @@
     - duplicate ownership / split ownership / unmanaged spec の判定ロジックは MoonBit 候補
     - filesystem scan と runner/listTests は TS に残す
   - 進捗:
-    - duplicate ownership / split ownership / unmanaged spec / task summary reducer は `src/core/src/config_check_core/` に移行済み
+    - duplicate ownership / split ownership / unmanaged spec / task summary reducer は `src/core/policy/config/` に移行済み
     - filesystem scan と bitflow task definition 読み込み、report formatting は TS shell を維持
 
 ### 分類 B: hybrid のまま進める機能
@@ -139,7 +139,7 @@
     - commit 単位の集計や confusion matrix は pure logic なので MoonBit 候補
     - DB query と CLI formatting は TS に残す
   - 進捗:
-    - sampling KPI の commit matching / confusion matrix / conditional rate / sample ratio reducer は `src/core/src/eval_core/` に移行済み
+    - sampling KPI の commit matching / confusion matrix / conditional rate / sample ratio reducer は `src/core/metrics/eval/` に移行済み
     - DB query と health score / markdown formatting は TS shell を維持
 
 ### 分類 C: TS shell に残す

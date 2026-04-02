@@ -1,4 +1,5 @@
 import type { FlakerIssue } from "./flaker-issue-contract.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 import type {
   FlakerQuarantineConfig,
   FlakerQuarantineExpiryStatus,
@@ -15,10 +16,6 @@ import {
 import { compileTitlePattern } from "./flaker-quarantine-match.js";
 
 const DEFAULT_EXPIRES_SOON_DAYS = 7;
-const MOONBIT_JS_BUILD_URL = new URL(
-  "../../../src/core/_build/js/debug/build/src/main/main.js",
-  import.meta.url,
-);
 
 export interface FlakerQuarantineTaskOwnership {
   id: string;
@@ -307,7 +304,7 @@ async function loadQuarantineSummaryBuilder(): Promise<
   (inputs: BuildFlakerQuarantineSummaryInputs) => FlakerQuarantineSummary
 > {
   try {
-    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as QuarantineCoreExports;
+    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as QuarantineCoreExports;
     if (typeof mod.summarize_quarantine_json === "function") {
       return (inputs) => {
         const now = normalizeToUtcMidnight(inputs.now ?? new Date());

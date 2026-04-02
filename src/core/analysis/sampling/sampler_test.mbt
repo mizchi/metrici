@@ -18,14 +18,14 @@ test "random sampling selects correct count" {
   let items = Array::makei(20, fn(i) {
     make_test_meta("test_" + i.to_string(), 0.0)
   })
-  let result = @sampler.sample_random(items, count=5, seed=42UL)
+  let result = @sampling.sample_random(items, count=5, seed=42UL)
   assert_eq(result.length(), 5)
 }
 
 ///|
 test "random sampling returns all when count > total" {
   let items = [make_test_meta("a", 0.0), make_test_meta("b", 0.0)]
-  let result = @sampler.sample_random(items, count=10, seed=42UL)
+  let result = @sampling.sample_random(items, count=10, seed=42UL)
   assert_eq(result.length(), 2)
 }
 
@@ -36,7 +36,7 @@ test "weighted sampling prefers flaky tests" {
   let items = [stable, flaky]
   let mut flaky_count = 0
   for i in 0..<100 {
-    let result = @sampler.sample_weighted(
+    let result = @sampling.sample_weighted(
       items,
       count=1,
       seed=i.to_uint64() * 12345UL + 1UL,
@@ -58,7 +58,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
     { suite: "flaky.spec.ts", test_name: "flaky", flaky_rate: 80.0, total_runs: 100, fail_count: 80, last_run_at: "", avg_duration_ms: 100, previously_failed: false, is_new: false },
   ]
   let affected_suites = ["affected.spec.ts"]
-  let result = @sampler.sample_hybrid(meta, affected_suites~, count=4, seed=42UL)
+  let result = @sampling.sample_hybrid(meta, affected_suites~, count=4, seed=42UL)
   assert_eq(result.length(), 4)
   let suites = result.map(fn(m) { m.suite })
   assert_true(suites.contains("affected.spec.ts"))
