@@ -38,7 +38,10 @@ function buildListedTestIndex(listedTests: TestId[]): Map<string, TestId[]> {
 
 export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
   const core = await loadCore();
-  let allTests = await buildTestMeta(opts.store);
+  let allTests = mergeListedTests(
+    await buildTestMeta(opts.store),
+    opts.listedTests ?? [],
+  );
   if (opts.skipQuarantined) {
     const quarantined = await opts.store.queryQuarantined();
     const qSet = new Set(quarantined.map((q) => q.testId));
@@ -145,4 +148,31 @@ async function buildTestMeta(store: MetricStore): Promise<TestMeta[]> {
     previously_failed: r.previously_failed,
     is_new: r.total_runs <= 1,
   }));
+}
+
+function mergeListedTests(
+  meta: TestMeta[],
+  listedTests: TestId[],
+): TestMeta[] {
+  const seen = new Set(meta.map((entry) => `${entry.suite}\0${entry.test_name}`));
+  const merged = [...meta];
+
+  for (const test of listedTests) {
+    const key = `${test.suite}\0${test.testName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push({
+      suite: test.suite,
+      test_name: test.testName,
+      flaky_rate: 0,
+      total_runs: 0,
+      fail_count: 0,
+      last_run_at: "",
+      avg_duration_ms: 0,
+      previously_failed: false,
+      is_new: true,
+    });
+  }
+
+  return merged;
 }

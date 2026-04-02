@@ -135,6 +135,27 @@ function parseKeyValuePairs(input?: string): Record<string, string> | undefined 
   return Object.fromEntries(entries);
 }
 
+function parseChangedFiles(input?: string): string[] | undefined {
+  const files = input
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return files && files.length > 0 ? files : undefined;
+}
+
+async function createConfiguredResolver(
+  cwd: string,
+  affectedConfig: { resolver: string; config: string },
+) {
+  return createResolver(
+    {
+      resolver: affectedConfig.resolver ?? "simple",
+      config: affectedConfig.config ? resolve(cwd, affectedConfig.config) : undefined,
+    },
+    cwd,
+  );
+}
+
 program
   .name("flaker")
   .description("CI metrics collection and analysis tool")
@@ -285,7 +306,7 @@ program
       await store.initialize();
 
       try {
-        const changedFiles = opts.changed?.split(",").map(f => f.trim()).filter(Boolean);
+        const changedFiles = parseChangedFiles(opts.changed);
         const mode = opts.strategy as "random" | "weighted" | "affected" | "hybrid";
         const manifest = opts.skipQuarantined
           ? loadQuarantineManifestIfExists({ cwd: process.cwd() })
@@ -298,20 +319,7 @@ program
         // Create resolver from config for affected/hybrid
         let resolver;
         if ((mode === "affected" || mode === "hybrid") && changedFiles?.length) {
-          const resolverType = config.affected.resolver ?? "simple";
-          if (resolverType === "bitflow" && config.affected.config) {
-            const { BitflowNativeResolver } = await import("./resolvers/bitflow-native.js");
-            resolver = new BitflowNativeResolver(resolve(config.affected.config));
-          } else if (resolverType === "workspace") {
-            const { WorkspaceResolver } = await import("./resolvers/workspace.js");
-            resolver = new WorkspaceResolver(process.cwd());
-          } else if (resolverType === "moon") {
-            const { MoonResolver } = await import("./resolvers/moon.js");
-            resolver = new MoonResolver(process.cwd());
-          } else {
-            const { SimpleResolver } = await import("./resolvers/simple.js");
-            resolver = new SimpleResolver();
-          }
+          resolver = await createConfiguredResolver(process.cwd(), config.affected);
         }
 
         const sampled = await runSample({
@@ -338,22 +346,30 @@ program
 program
   .command("run")
   .description("Sample and run tests")
-  .option("--strategy <s>", "Sampling strategy: random or weighted", "random")
+  .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid", "random")
   .option("--count <n>", "Number of tests to run")
   .option("--percentage <n>", "Percentage of tests to run")
+  .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
   .option("--runner <runner>", "Runner type: direct or actrun", "direct")
   .option("--retry", "Retry failed tests (actrun only)")
   .option("--skip-quarantined", "Exclude quarantined tests")
   .action(
-    async (opts: { strategy: string; count?: string; percentage?: string; runner: string; retry?: boolean; skipQuarantined?: boolean }) => {
-      const config = loadConfig(process.cwd());
+    async (opts: { strategy: string; count?: string; percentage?: string; changed?: string; runner: string; retry?: boolean; skipQuarantined?: boolean }) => {
+      const cwd = process.cwd();
+      const config = loadConfig(cwd);
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
       try {
+        const changedFiles = parseChangedFiles(opts.changed);
+        const mode = opts.strategy as "random" | "weighted" | "affected" | "hybrid";
         const manifest = opts.skipQuarantined
-          ? loadQuarantineManifestIfExists({ cwd: process.cwd() })
+          ? loadQuarantineManifestIfExists({ cwd })
           : null;
+        const resolver =
+          (mode === "affected" || mode === "hybrid") && changedFiles?.length
+            ? await createConfiguredResolver(cwd, config.affected)
+            : undefined;
         if (opts.runner === "actrun") {
           const actRunner = new ActrunRunner({
             workflow: config.runner.command,
@@ -411,12 +427,14 @@ program
         const runResult = await runTests({
           store,
           runner: createRunner(config.runner),
-          mode: opts.strategy as "random" | "weighted",
+          mode,
           count: opts.count ? Number(opts.count) : undefined,
           percentage: opts.percentage ? Number(opts.percentage) : undefined,
+          resolver,
+          changedFiles,
           skipQuarantined: opts.skipQuarantined,
           quarantineManifestEntries: manifest?.entries,
-          cwd: process.cwd(),
+          cwd,
         });
         if (runResult.exitCode !== 0) {
           process.exit(1);

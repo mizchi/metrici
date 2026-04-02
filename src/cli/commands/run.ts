@@ -1,6 +1,7 @@
 import type { MetricStore } from "../storage/types.js";
 import { runSample } from "./sample.js";
 import type { QuarantineManifestEntry } from "../quarantine-manifest.js";
+import type { DependencyResolver } from "../resolvers/types.js";
 import {
   orchestrate,
   withQuarantineRuntime,
@@ -14,8 +15,10 @@ export interface RunOpts {
   runner: RunnerAdapter;
   count?: number;
   percentage?: number;
-  mode: "random" | "weighted";
+  mode: "random" | "weighted" | "affected" | "hybrid";
   seed?: number;
+  resolver?: DependencyResolver;
+  changedFiles?: string[];
   skipQuarantined?: boolean;
   quarantineManifestEntries?: QuarantineManifestEntry[];
   cwd?: string;
@@ -68,6 +71,8 @@ export async function runTests(opts: RunOpts): Promise<ExecuteResult> {
     percentage: opts.percentage,
     mode: opts.mode,
     seed: opts.seed,
+    resolver: opts.resolver,
+    changedFiles: opts.changedFiles,
     skipQuarantined: opts.skipQuarantined,
     quarantineManifestEntries: opts.quarantineManifestEntries,
     listedTests,

@@ -118,3 +118,53 @@ describe("sample command", () => {
     expect(sampled).toHaveLength(10);
   });
 });
+
+describe("sample command without history", () => {
+  let store: DuckDBStore;
+
+  beforeEach(async () => {
+    store = new DuckDBStore(":memory:");
+    await store.initialize();
+  });
+
+  afterEach(async () => {
+    await store.close();
+  });
+
+  it("falls back to listedTests when the store has no test history", async () => {
+    const sampled = await runSample({
+      store,
+      mode: "random",
+      count: 2,
+      seed: 42,
+      listedTests: [
+        {
+          suite: "third_party/git/t/t1300-config.sh",
+          testName: "t1300-config.sh",
+          taskId: "git-compat",
+        },
+        {
+          suite: "third_party/git/t/t3200-branch.sh",
+          testName: "t3200-branch.sh",
+          taskId: "git-compat",
+        },
+        {
+          suite: "third_party/git/t/t5302-pack-index.sh",
+          testName: "t5302-pack-index.sh",
+          taskId: "git-compat",
+        },
+      ],
+    });
+
+    expect(sampled).toHaveLength(2);
+    expect(sampled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          suite: expect.stringMatching(/^third_party\/git\/t\/t\d+/),
+          is_new: true,
+          total_runs: 0,
+        }),
+      ]),
+    );
+  });
+});
