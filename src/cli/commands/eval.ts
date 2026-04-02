@@ -26,6 +26,12 @@ export interface EvalReport {
   healthScore: number;
 }
 
+type EvalReportFormat = "text" | "markdown";
+
+interface EvalFormatOpts {
+  windowDays?: number;
+}
+
 interface PredictiveSignalSummary {
   localPassCommits?: number;
   ciPassWhenLocalPass?: number;
@@ -175,6 +181,53 @@ function buildPredictiveSignalSummary(
   return {
     rate: toRate(ciCommits, localCommits),
   };
+}
+
+function healthScoreLabel(score: number): string {
+  return score >= 80 ? "GOOD" : score >= 50 ? "FAIR" : "POOR";
+}
+
+function formatRateValue(rate: number | null, detail?: string): string {
+  if (rate == null) return "N/A";
+  return detail ? `${rate}% (${detail})` : `${rate}%`;
+}
+
+function buildEvalRecommendations(report: EvalReport): string[] {
+  const recommendations: string[] = [];
+  const d = report.dataSufficiency;
+  const det = report.detection;
+  const res = report.resolution;
+  const kpi = report.samplingKpi;
+
+  if (d.avgRunsPerTest < 5) {
+    recommendations.push("Collect more data: run `flaker collect` regularly to build history");
+  }
+  if (det.flakyTests > 0 && det.quarantinedTests === 0) {
+    recommendations.push("Quarantine flaky tests: run `flaker quarantine --auto`");
+  }
+  if (res.newFlaky > 0) {
+    recommendations.push(`Investigate ${res.newFlaky} newly flaky test(s): run \`flaker flaky\``);
+  }
+  if (det.flakyTests === 0 && d.totalResults > 0) {
+    recommendations.push("No flaky tests detected. Suite is healthy!");
+  }
+  if (d.totalResults === 0) {
+    recommendations.push("No data yet. Run `flaker collect` or `flaker import` to get started");
+  }
+  if (kpi.matchedCommits === 0 && d.totalResults > 0) {
+    recommendations.push("No matched local/CI commit history yet. Import local runs with the same commit SHA to measure sampling quality");
+  }
+  if (kpi.passSignal.rate != null && kpi.passSignal.rate < 95) {
+    recommendations.push("Local pass is not yet a strong CI predictor. Increase sample size or improve affected mapping");
+  }
+  if (kpi.failSignal.rate != null && kpi.failSignal.rate < 50) {
+    recommendations.push("Local failures are weak CI signals. Check for noisy tests or mismatched local/CI environments");
+  }
+  if (kpi.avgSampleRatio != null && kpi.avgSampleRatio > 50) {
+    recommendations.push("Local sample size is large relative to CI. Tighten affected rules or reduce default N");
+  }
+
+  return recommendations;
 }
 
 function averageDurationDeltaMinutes(rows: Array<{ localDurationMs: number; ciDurationMs: number }>): number | null {
@@ -612,14 +665,14 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
   };
 }
 
-export function formatEvalReport(report: EvalReport): string {
+function formatEvalTextReport(report: EvalReport): string {
   const lines: string[] = [];
 
   lines.push("# flaker Evaluation Report");
   lines.push("");
 
   // Health Score
-  const label = report.healthScore >= 80 ? "GOOD" : report.healthScore >= 50 ? "FAIR" : "POOR";
+  const label = healthScoreLabel(report.healthScore);
   lines.push(`## Health Score: ${report.healthScore}/100 (${label})`);
   lines.push("");
 
@@ -680,33 +733,95 @@ export function formatEvalReport(report: EvalReport): string {
 
   // Recommendations
   lines.push("## Recommendations");
-  if (d.avgRunsPerTest < 5) {
-    lines.push("  - Collect more data: run `flaker collect` regularly to build history");
-  }
-  if (det.flakyTests > 0 && det.quarantinedTests === 0) {
-    lines.push("  - Quarantine flaky tests: run `flaker quarantine --auto`");
-  }
-  if (res.newFlaky > 0) {
-    lines.push(`  - Investigate ${res.newFlaky} newly flaky test(s): run \`flaker flaky\``);
-  }
-  if (det.flakyTests === 0 && d.totalResults > 0) {
-    lines.push("  - No flaky tests detected. Suite is healthy!");
-  }
-  if (d.totalResults === 0) {
-    lines.push("  - No data yet. Run `flaker collect` or `flaker import` to get started");
-  }
-  if (kpi.matchedCommits === 0 && d.totalResults > 0) {
-    lines.push("  - No matched local/CI commit history yet. Import local runs with the same commit SHA to measure sampling quality");
-  }
-  if (kpi.passSignal.rate != null && kpi.passSignal.rate < 95) {
-    lines.push("  - Local pass is not yet a strong CI predictor. Increase sample size or improve affected mapping");
-  }
-  if (kpi.failSignal.rate != null && kpi.failSignal.rate < 50) {
-    lines.push("  - Local failures are weak CI signals. Check for noisy tests or mismatched local/CI environments");
-  }
-  if (kpi.avgSampleRatio != null && kpi.avgSampleRatio > 50) {
-    lines.push("  - Local sample size is large relative to CI. Tighten affected rules or reduce default N");
+  for (const recommendation of buildEvalRecommendations(report)) {
+    lines.push(`  - ${recommendation}`);
   }
 
   return lines.join("\n");
+}
+
+function formatEvalMarkdownReport(
+  report: EvalReport,
+  opts: EvalFormatOpts = {},
+): string {
+  const windowDays = opts.windowDays ?? 30;
+  const d = report.dataSufficiency;
+  const det = report.detection;
+  const res = report.resolution;
+  const kpi = report.samplingKpi;
+  const recommendations = buildEvalRecommendations(report);
+
+  const lines = [
+    `# flaker Review (last ${windowDays} days)`,
+    "",
+    "## Snapshot",
+    "",
+    "| Metric | Value |",
+    "| --- | --- |",
+    `| Health score | ${report.healthScore}/100 (${healthScoreLabel(report.healthScore)}) |`,
+    `| Flaky tests | ${det.flakyTests} |`,
+    `| Matched commits | ${kpi.matchedCommits} |`,
+    `| Avg sample ratio | ${kpi.avgSampleRatio != null ? `${kpi.avgSampleRatio}% of CI` : "N/A"} |`,
+    `| Avg saved minutes | ${kpi.avgSavedMinutes != null ? `${kpi.avgSavedMinutes} min` : "N/A"} |`,
+    `| Fallback rate | ${formatRateValue(kpi.fallbackRate, `${kpi.fallbackRuns}`)} |`,
+    `| CI pass when local pass | ${formatRateValue(kpi.passSignal.rate, `${kpi.passSignal.ciPassWhenLocalPass}/${kpi.passSignal.localPassCommits}`)} |`,
+    `| CI fail when local fail | ${formatRateValue(kpi.failSignal.rate, `${kpi.failSignal.ciFailWhenLocalFail}/${kpi.failSignal.localFailCommits}`)} |`,
+    "",
+    "## Data",
+    "",
+    "| Metric | Value |",
+    "| --- | --- |",
+    `| Workflow runs | ${d.totalRuns} |`,
+    `| Test results | ${d.totalResults} |`,
+    `| Unique tests | ${d.uniqueTests} |`,
+    `| Avg runs/test | ${d.avgRunsPerTest} |`,
+    `| Date range | ${d.firstDate ?? "N/A"} -> ${d.lastDate ?? "N/A"} |`,
+    "",
+    "## Sampling",
+    "",
+    "| Metric | Value |",
+    "| --- | --- |",
+    `| Local-only commits | ${kpi.localOnlyCommits} |`,
+    `| CI-only commits | ${kpi.ciOnlyCommits} |`,
+    `| Avg local sample size N | ${kpi.avgLocalSampleSize ?? "N/A"} |`,
+    `| Median local sample N | ${kpi.medianLocalSampleSize ?? "N/A"} |`,
+    `| P95 local sample N | ${kpi.p95LocalSampleSize ?? "N/A"} |`,
+    `| Avg CI test count | ${kpi.avgCiTestCount ?? "N/A"} |`,
+    `| False negatives | ${kpi.misses.localPassButCiFail}${kpi.misses.falseNegativeRate != null ? ` (${kpi.misses.falseNegativeRate}%)` : ""} |`,
+    `| False positives | ${kpi.misses.localFailButCiPass}${kpi.misses.falsePositiveRate != null ? ` (${kpi.misses.falsePositiveRate}%)` : ""} |`,
+    `| Confusion matrix | TP=${kpi.confusionMatrix.truePositive} FP=${kpi.confusionMatrix.falsePositive} FN=${kpi.confusionMatrix.falseNegative} TN=${kpi.confusionMatrix.trueNegative} |`,
+    "",
+    "## Flake Resolution",
+    "",
+    "| Metric | Value |",
+    "| --- | --- |",
+    `| True flaky tests | ${det.trueFlakyTests} |`,
+    `| Quarantined tests | ${det.quarantinedTests} |`,
+    `| Resolved flaky | ${res.resolvedFlaky} |`,
+    `| New flaky | ${res.newFlaky} |`,
+    `| Avg MTTD | ${res.mttdDays != null ? `${res.mttdDays} days` : "N/A"} |`,
+    `| Avg MTTR | ${res.mttrDays != null ? `${res.mttrDays} days` : "N/A"} |`,
+    "",
+    "## Actions",
+    "",
+  ];
+
+  if (recommendations.length === 0) {
+    lines.push("- No immediate action needed.");
+  } else {
+    lines.push(...recommendations.map((recommendation) => `- ${recommendation}`));
+  }
+
+  return lines.join("\n");
+}
+
+export function formatEvalReport(
+  report: EvalReport,
+  format: EvalReportFormat = "text",
+  opts: EvalFormatOpts = {},
+): string {
+  if (format === "markdown") {
+    return formatEvalMarkdownReport(report, opts);
+  }
+  return formatEvalTextReport(report);
 }

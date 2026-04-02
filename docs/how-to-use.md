@@ -269,6 +269,7 @@ Identifies the commit range where a test became flaky.
 ```bash
 flaker eval
 flaker eval --json
+flaker eval --markdown --window 7
 ```
 
 Rates overall test suite health on a 0-100 scale:
@@ -276,6 +277,8 @@ Rates overall test suite health on a 0-100 scale:
 - **Detection** — Flaky test detection status
 - **Resolution** — Resolution tracking (MTTD/MTTR)
 - **Health Score** — Composite score
+
+Use `--markdown --window 7` to generate a weekly KPI summary that can be pasted directly into review notes.
 
 ### `flaker query` — Direct SQL Analysis
 

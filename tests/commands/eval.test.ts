@@ -325,4 +325,29 @@ describe("eval command", () => {
     expect(formatted).toContain("Avg saved minutes:");
     expect(formatted).toContain("Fallback rate:");
   });
+
+  it("formats markdown review output with windowed sampling KPI", async () => {
+    const report = await runEval({ store });
+    report.healthScore = 88;
+    report.detection.flakyTests = 4;
+    report.samplingKpi.matchedCommits = 12;
+    report.samplingKpi.avgSampleRatio = 18.2;
+    report.samplingKpi.avgSavedMinutes = 14.7;
+    report.samplingKpi.fallbackRuns = 1;
+    report.samplingKpi.fallbackRate = 8.3;
+    report.samplingKpi.passSignal.localPassCommits = 10;
+    report.samplingKpi.passSignal.ciPassWhenLocalPass = 10;
+    report.samplingKpi.passSignal.rate = 100;
+    report.samplingKpi.failSignal.localFailCommits = 2;
+    report.samplingKpi.failSignal.ciFailWhenLocalFail = 1;
+    report.samplingKpi.failSignal.rate = 50;
+
+    const formatted = formatEvalReport(report, "markdown", { windowDays: 7 });
+
+    expect(formatted).toContain("# flaker Review (last 7 days)");
+    expect(formatted).toContain("| Metric | Value |");
+    expect(formatted).toContain("| Avg saved minutes | 14.7 min |");
+    expect(formatted).toContain("| Fallback rate | 8.3% (1) |");
+    expect(formatted).toContain("| CI pass when local pass | 100% (10/10) |");
+  });
 });

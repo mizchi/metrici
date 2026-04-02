@@ -270,6 +270,7 @@ flaker bisect --test "should redirect" --suite "tests/login.spec.ts"
 ```bash
 flaker eval
 flaker eval --json
+flaker eval --markdown --window 7
 ```
 
 テストスイート全体の健全性を 0-100 のスコアで評価します:
@@ -277,6 +278,8 @@ flaker eval --json
 - **Detection** — flaky テストの検出状況
 - **Resolution** — flaky テストの解決状況 (MTTD/MTTR)
 - **Health Score** — 総合スコア
+
+`--markdown --window 7` を使うと、週次レビューに貼りやすい KPI サマリを Markdown で出力します。
 
 ### `flaker query` — SQL で直接分析
 

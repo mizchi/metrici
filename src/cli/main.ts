@@ -17,6 +17,7 @@ import {
   formatSamplingSummary,
   planSample,
 } from "./commands/sample.js";
+import { recordSamplingRunFromSummary } from "./commands/sampling-run.js";
 import { runTests } from "./commands/run.js";
 import {
   parseSampleCount,
@@ -157,66 +158,6 @@ function parseChangedFiles(input?: string): string[] | undefined {
     .map((value) => value.trim())
     .filter(Boolean);
   return files && files.length > 0 ? files : undefined;
-}
-
-async function recordSamplingRunFromMeta(
-  store: DuckDBStore,
-  params: {
-    commitSha?: string | null;
-    commandKind: "sample" | "run";
-    summary: {
-      strategy: string;
-      requestedCount: number | null;
-      requestedPercentage: number | null;
-      seed: number;
-      changedFiles: string[] | null;
-      candidateCount: number;
-      selectedCount: number;
-      sampleRatio: number | null;
-      estimatedSavedTests: number;
-      estimatedSavedMinutes: number | null;
-      fallbackReason: string | null;
-    };
-    tests: Array<{
-      suite: string;
-      test_name?: string;
-      testName?: string;
-      task_id?: string | null;
-      taskId?: string | null;
-      filter?: string | null;
-      test_id?: string | null;
-      testId?: string | null;
-    }>;
-    durationMs?: number | null;
-  },
-): Promise<void> {
-  const samplingRunId = await store.recordSamplingRun({
-    commitSha: params.commitSha ?? null,
-    commandKind: params.commandKind,
-    strategy: params.summary.strategy,
-    requestedCount: params.summary.requestedCount,
-    requestedPercentage: params.summary.requestedPercentage,
-    seed: params.summary.seed,
-    changedFiles: params.summary.changedFiles,
-    candidateCount: params.summary.candidateCount,
-    selectedCount: params.summary.selectedCount,
-    sampleRatio: params.summary.sampleRatio,
-    estimatedSavedTests: params.summary.estimatedSavedTests,
-    estimatedSavedMinutes: params.summary.estimatedSavedMinutes,
-    fallbackReason: params.summary.fallbackReason,
-    durationMs: params.durationMs ?? null,
-  });
-  await store.recordSamplingRunTests(
-    params.tests.map((test, ordinal) => ({
-      samplingRunId,
-      ordinal,
-      suite: test.suite,
-      testName: test.testName ?? test.test_name ?? "",
-      taskId: test.taskId ?? test.task_id ?? null,
-      filter: test.filter ?? null,
-      testId: test.testId ?? test.test_id ?? null,
-    })),
-  );
 }
 
 async function createConfiguredResolver(
@@ -418,7 +359,7 @@ program
           quarantineManifestEntries: manifest?.entries,
           listedTests,
         });
-        await recordSamplingRunFromMeta(store, {
+        await recordSamplingRunFromSummary(store, {
           commitSha: resolveCurrentCommitSha(process.cwd()),
           commandKind: "sample",
           summary: samplePlan.summary,
@@ -559,7 +500,7 @@ program
             }),
           ),
         );
-        await recordSamplingRunFromMeta(store, {
+        await recordSamplingRunFromSummary(store, {
           commitSha,
           commandKind: "run",
           summary: runResult.samplingSummary,
@@ -970,15 +911,24 @@ quarantineCommand
 program
   .command("eval")
   .description("Evaluate test suite health and flaker effectiveness")
+  .option("--window <days>", "Analysis window in days")
   .option("--json", "Output raw JSON report")
-  .action(async (opts: { json?: boolean }) => {
+  .option("--markdown", "Output markdown review report")
+  .action(async (opts: { window?: string; json?: boolean; markdown?: boolean }) => {
+    if (opts.json && opts.markdown) {
+      console.error("Cannot use --json and --markdown together");
+      process.exit(1);
+    }
     const config = loadConfig(process.cwd());
     const store = new DuckDBStore(resolve(config.storage.path));
+    const windowDays = opts.window ? Number(opts.window) : config.flaky.window_days;
     await store.initialize();
     try {
-      const report = await runEval({ store, windowDays: config.flaky.window_days });
+      const report = await runEval({ store, windowDays });
       if (opts.json) {
         console.log(JSON.stringify(report, null, 2));
+      } else if (opts.markdown) {
+        console.log(formatEvalReport(report, "markdown", { windowDays }));
       } else {
         console.log(formatEvalReport(report));
       }
