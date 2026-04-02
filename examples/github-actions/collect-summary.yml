@@ -1,0 +1,83 @@
+name: flaker-collect-summary
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Collect flaker history
+        id: collect
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pnpm exec flaker collect \
+            --last 14 \
+            --json \
+            --output .artifacts/flaker/collect-summary.json \
+            --fail-on-errors
+
+      - name: Append GitHub step summary
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = '.artifacts/flaker/collect-summary.json';
+          if (!fs.existsSync(path)) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## flaker collect\n\nNo collect summary was generated.\n');
+            process.exit(0);
+          }
+          const summary = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const lines = [
+            '## flaker collect',
+            '',
+            `- runsCollected: ${summary.runsCollected}`,
+            `- testsCollected: ${summary.testsCollected}`,
+            `- failedRuns: ${summary.failedRuns}`,
+          ];
+          if (summary.failures.length > 0) {
+            lines.push('');
+            lines.push('| runId | message |');
+            lines.push('| --- | --- |');
+            for (const failure of summary.failures) {
+              lines.push(`| ${failure.runId} | ${failure.message.replace(/\|/g, '\\|')} |`);
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE
+
+      - name: Upload collect summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaker-collect-summary
+          path: .artifacts/flaker/collect-summary.json
+          if-no-files-found: error
+
+      - name: Fail when collect saw errors
+        if: steps.collect.outcome == 'failure'
+        run: exit 1

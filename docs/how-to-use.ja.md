@@ -132,12 +132,18 @@ detection_threshold = 2.0     # この % 以上で flaky と判定
 ### `flaker collect` — CI からデータ収集
 
 ```bash
-flaker collect                    # 直近 30 日分
-flaker collect --last 90          # 直近 90 日分
-flaker collect --branch main      # main ブランチのみ
+flaker collect                                           # 直近 30 日分
+flaker collect --last 90                                 # 直近 90 日分
+flaker collect --branch main                             # main ブランチのみ
+flaker collect --json --output .artifacts/collect.json   # 機械可読 summary を保存
+flaker collect --json --output .artifacts/collect.json --fail-on-errors
 ```
 
 GitHub Actions の artifact からテストレポートを自動抽出します。既定の artifact 名は `playwright` が `playwright-report`、`junit` が `junit-report`、`vrt-migration` が `migration-report`、`vrt-bench` が `bench-report` です。workflow 側で別名を使う場合は `[adapter].artifact_name` で上書きします。`GITHUB_TOKEN` 環境変数が必要です。
+
+`--json` は機械可読 summary が欲しいとき、`--output <file>` は summary を artifact に残したいとき、`--fail-on-errors` は partial failure を CI failure として扱いたいときに使います。
+
+GitHub Actions の完全な例は [examples/github-actions/collect-summary.yml](../examples/github-actions/collect-summary.yml) を参照してください。
 
 ### `flaker import` — ローカルレポートの取り込み
 

@@ -132,12 +132,18 @@ detection_threshold = 2.0     # Mark as flaky above this %
 ### `flaker collect` — Collect from CI
 
 ```bash
-flaker collect                    # Last 30 days
-flaker collect --last 90          # Last 90 days
-flaker collect --branch main      # main branch only
+flaker collect                                           # Last 30 days
+flaker collect --last 90                                 # Last 90 days
+flaker collect --branch main                             # main branch only
+flaker collect --json --output .artifacts/collect.json   # Machine-readable summary
+flaker collect --json --output .artifacts/collect.json --fail-on-errors
 ```
 
 Auto-extracts test reports from GitHub Actions artifacts. The default artifact name is `playwright-report` for `playwright`, `junit-report` for `junit`, `migration-report` for `vrt-migration`, and `bench-report` for `vrt-bench`. Override it with `[adapter].artifact_name` when your workflow uses a different artifact name. Requires `GITHUB_TOKEN` environment variable.
+
+Use `--json` when you want a machine-readable summary, `--output <file>` when you want to persist that summary as a workflow artifact, and `--fail-on-errors` when partial collection failures should fail CI.
+
+A complete GitHub Actions example is available at [examples/github-actions/collect-summary.yml](../examples/github-actions/collect-summary.yml).
 
 ### `flaker import` — Import Local Reports
 
