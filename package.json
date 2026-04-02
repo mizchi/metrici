@@ -15,6 +15,11 @@
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.27.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "duckdb"
+    ]
+  },
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "adm-zip": "^0.5.16",

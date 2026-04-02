@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { TestCaseResult, TestResultAdapter } from "./types.js";
+import { resolveTestIdentity } from "../identity.js";
+import { parseVitestJson } from "../runners/vitest.js";
 
 export interface ActrunTask {
   id: string;
@@ -55,13 +57,14 @@ export const actrunAdapter: TestResultAdapter = {
     const output: ActrunRunOutput = JSON.parse(input);
     return output.tasks.map((task) => {
       const { suite, testName } = parseTaskId(task.id);
-      return {
+      return resolveTestIdentity({
         suite,
         testName,
+        taskId: task.id,
         status: mapStatus(task),
         durationMs: 0,
         retryCount: 0,
-      };
+      });
     });
   },
 };
@@ -100,7 +103,8 @@ export function extractTestReportsFromArtifacts(
           }
           // Detect Vitest format (has "testResults" key)
           if (parsed.testResults) {
-            // Could add vitest parsing here too
+            results.push(...parseVitestJson(content));
+            continue;
           }
         } catch {
           /* not a valid report, skip */

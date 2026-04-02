@@ -94,6 +94,10 @@ function detectFlaky(input: DetectInput): DetectOutput {
 }
 
 function sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const arr = [...meta];
   let s = seed >>> 0;
 
@@ -105,15 +109,19 @@ function sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[]
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 
-  return arr.slice(0, count);
+  return arr.slice(0, actualCount);
 }
 
 function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const remaining = [...meta];
   const result: TestMeta[] = [];
   let s = seed >>> 0;
 
-  const n = Math.min(count, remaining.length);
+  const n = actualCount;
   for (let picked = 0; picked < n; picked++) {
     // Compute weights
     const weights = remaining.map((m) => 1.0 + m.flaky_rate);
@@ -141,6 +149,10 @@ function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta
 }
 
 function sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const affectedSet = new Set(affectedSuites);
   const selected: TestMeta[] = [];
   const used = new Set<number>();
@@ -152,12 +164,19 @@ function sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number,
   // Priority 3: new
   meta.forEach((m, i) => { if (m.is_new && !used.has(i)) { selected.push(m); used.add(i); } });
   // Priority 4: weighted random for remaining
-  if (selected.length < count) {
+  if (selected.length < actualCount) {
     const remaining = meta.filter((_, i) => !used.has(i));
-    const extra = sampleWeighted(remaining, count - selected.length, seed);
+    const extra = sampleWeighted(remaining, actualCount - selected.length, seed);
     selected.push(...extra);
   }
-  return selected.slice(0, count);
+  return selected.slice(0, actualCount);
+}
+
+function clampSampleCount(count: number, total: number): number {
+  if (!Number.isFinite(count)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(Math.trunc(count), total));
 }
 
 // MoonBit JS backend types
@@ -190,14 +209,15 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
 }
 
 let cachedCore: MetriciCore | undefined;
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
 
 export async function loadCore(): Promise<MetriciCore> {
   if (cachedCore) return cachedCore;
   try {
-    const mbtPath = new URL(
-      "../../../src/core/_build/js/debug/build/src/main/main.js",
-      import.meta.url,
-    ).href;
+    const mbtPath = MOONBIT_JS_BUILD_URL.href;
     const mbt = (await import(mbtPath)) as MbtJsExports;
     if (
       typeof mbt.detect_flaky_json === "function" &&
@@ -222,6 +242,15 @@ export async function loadCore(): Promise<MetriciCore> {
   return cachedCore;
 }
 
+export async function hasMoonBitJsBuild(): Promise<boolean> {
+  try {
+    await access(MOONBIT_JS_BUILD_URL);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Synchronous fallback for contexts where async is not possible */
 export function loadCoreSync(): MetriciCore {
   return {
@@ -233,7 +262,151 @@ export function loadCoreSync(): MetriciCore {
   };
 }
 
-/** TS fallback: returns empty (no workflow parsing without MoonBit) */
-function resolveAffectedFallback(_workflowText: string, _changedPaths: string[]): string[] {
-  return [];
+interface FallbackTask {
+  id: string;
+  needs: string[];
+  srcs: string[];
 }
+
+/** TS fallback for affected-target resolution when MoonBit build is unavailable. */
+function resolveAffectedFallback(workflowText: string, changedPaths: string[]): string[] {
+  const tasks = parseWorkflowTasks(workflowText);
+  if (tasks.length === 0 || changedPaths.length === 0) return [];
+
+  const initial = new Set<string>();
+  for (const task of tasks) {
+    if (task.srcs.length === 0) continue;
+    const matched = changedPaths.some((path) => task.srcs.some((pattern) => matchGlob(pattern, path)));
+    if (matched) {
+      initial.add(task.id);
+    }
+  }
+  if (initial.size === 0) return [];
+
+  const byNeed = new Map<string, string[]>();
+  for (const task of tasks) {
+    for (const need of task.needs) {
+      const dependents = byNeed.get(need);
+      if (dependents) dependents.push(task.id);
+      else byNeed.set(need, [task.id]);
+    }
+  }
+
+  // Expand transitive dependents (A needed by B => A change affects B)
+  const affected = new Set(initial);
+  const queue = [...initial];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    for (const dependent of byNeed.get(current) ?? []) {
+      if (!affected.has(dependent)) {
+        affected.add(dependent);
+        queue.push(dependent);
+      }
+    }
+  }
+  return [...affected];
+}
+
+function parseWorkflowTasks(workflowText: string): FallbackTask[] {
+  const blocks = extractTaskBlocks(workflowText);
+  const tasks: FallbackTask[] = [];
+  for (const block of blocks) {
+    const id = getQuotedValue(block, "id");
+    if (!id) continue;
+
+    tasks.push({
+      id,
+      needs: getQuotedArrayValue(block, "needs"),
+      srcs: getQuotedArrayValue(block, "srcs"),
+    });
+  }
+  return tasks;
+}
+
+function extractTaskBlocks(workflowText: string): string[] {
+  const blocks: string[] = [];
+  let i = 0;
+  while (i < workflowText.length) {
+    const idx = workflowText.indexOf("task(", i);
+    if (idx === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let end = idx;
+    for (; end < workflowText.length; end++) {
+      const ch = workflowText[end];
+      const prev = end > 0 ? workflowText[end - 1] : "";
+
+      if (ch === "\"" && prev !== "\\") {
+        inString = !inString;
+      }
+      if (inString) continue;
+
+      if (ch === "(") depth++;
+      if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          end++;
+          break;
+        }
+      }
+    }
+    if (end > idx) {
+      blocks.push(workflowText.slice(idx, end));
+      i = end;
+    } else {
+      i = idx + 5;
+    }
+  }
+  return blocks;
+}
+
+function getQuotedValue(line: string, key: string): string | null {
+  const m = new RegExp(`${key}\\s*=\\s*(['"])(.*?)\\1`, "s").exec(line);
+  return m?.[2] ?? null;
+}
+
+function getQuotedArrayValue(line: string, key: string): string[] {
+  const m = new RegExp(`${key}\\s*=\\s*\\[(.*?)\\]`, "s").exec(line);
+  if (!m) return [];
+  const inner = m[1].trim();
+  if (!inner) return [];
+  const values: string[] = [];
+  const re = /(['"])(.*?)\1/g;
+  for (const match of inner.matchAll(re)) {
+    values.push(match[2]);
+  }
+  return values;
+}
+
+function matchGlob(pattern: string, target: string): boolean {
+  const normalizedPattern = pattern.replaceAll("\\", "/");
+  const normalizedTarget = target.replaceAll("\\", "/");
+  const regex = globToRegex(normalizedPattern);
+  return regex.test(normalizedTarget);
+}
+
+function globToRegex(pattern: string): RegExp {
+  let out = "^";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "*") {
+      const next = pattern[i + 1];
+      if (next === "*") {
+        out += ".*";
+        i++;
+      } else {
+        out += "[^/]*";
+      }
+      continue;
+    }
+    if (".+?^${}()|[]\\".includes(ch)) {
+      out += `\\${ch}`;
+    } else {
+      out += ch;
+    }
+  }
+  out += "$";
+  return new RegExp(out);
+}
+import { access } from "node:fs/promises";

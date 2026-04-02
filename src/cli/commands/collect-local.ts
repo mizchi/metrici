@@ -5,6 +5,7 @@ import { actrunAdapter, extractTestReportsFromArtifacts } from "../adapters/actr
 import { playwrightAdapter } from "../adapters/playwright.js";
 import { junitAdapter } from "../adapters/junit.js";
 import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
+import { toStoredTestResult } from "../storage/test-result-mapper.js";
 
 export interface CollectLocalOpts {
   store: MetricStore;
@@ -22,6 +23,13 @@ interface ActrunRunListEntry {
   run_id: string;
   conclusion: string;
   status: string;
+}
+
+function actrunArtifactDirs(workspace: string, runId: string): string[] {
+  return [
+    join(workspace, ".actrun", "runs", runId, "artifacts"),
+    join(workspace, "_build", "actrun", "runs", runId, "artifacts"),
+  ];
 }
 
 export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLocalResult> {
@@ -57,9 +65,9 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
 
     // Try to extract richer test reports from actrun artifacts
     const workspace = opts.workspace ?? process.cwd();
-    const artifactsDir = join(workspace, ".actrun", "runs", entry.run_id, "artifacts");
-    let testCases = existsSync(artifactsDir)
-      ? extractTestReportsFromArtifacts([artifactsDir], {
+    const artifactDirs = actrunArtifactDirs(workspace, entry.run_id).filter(existsSync);
+    let testCases = artifactDirs.length > 0
+      ? extractTestReportsFromArtifacts(artifactDirs, {
           playwright: playwrightAdapter,
           junit: junitAdapter,
         })
@@ -89,18 +97,13 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
 
     // Insert test results
     if (testCases.length > 0) {
-      const testResults: TestResult[] = testCases.map((tc) => ({
-        workflowRunId: runId,
-        suite: tc.suite,
-        testName: tc.testName,
-        status: tc.status,
-        durationMs: tc.durationMs,
-        retryCount: tc.retryCount,
-        errorMessage: tc.errorMessage ?? null,
-        commitSha,
-        variant: tc.variant ?? null,
-        createdAt: startedAt,
-      }));
+      const testResults: TestResult[] = testCases.map((tc) =>
+        toStoredTestResult(tc, {
+          workflowRunId: runId,
+          commitSha,
+          createdAt: startedAt,
+        }),
+      );
       await store.insertTestResults(testResults);
       testsImported += testResults.length;
     }
