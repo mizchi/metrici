@@ -7,6 +7,7 @@ import { loadConfig } from "./config.js";
 import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
+  formatCollectSummary,
   type GitHubClient,
 } from "./commands/collect.js";
 import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
@@ -216,7 +217,7 @@ program
             head_branch: run.head_branch ?? "",
             head_sha: run.head_sha,
             event: run.event,
-            conclusion: run.conclusion ?? "",
+            conclusion: run.conclusion ?? "unknown",
             created_at: run.created_at,
             run_started_at: run.run_started_at ?? run.created_at,
             updated_at: run.updated_at,
@@ -251,9 +252,7 @@ program
         artifactName: config.adapter.artifact_name,
         customCommand: config.adapter.command,
       });
-      console.log(
-        `Collected ${result.runsCollected} runs, ${result.testsCollected} test results`,
-      );
+      console.log(formatCollectSummary(result));
     } finally {
       await store.close();
     }
