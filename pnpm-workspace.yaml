@@ -1,5 +1,9 @@
+autoInstallPeers: false
 strictDepBuilds: true
 
 allowBuilds:
   duckdb: true
-  esbuild: true
+
+ignoredOptionalDependencies:
+  - esbuild
+  - tsx
