@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: FlakerConfig = {
   flaky: { window_days: 14, detection_threshold: 0.1 },
 };
 
-function deepMerge<T extends Record<string, unknown>>(
+function deepMerge<T>(
   target: T,
   source: Record<string, unknown>,
 ): T {

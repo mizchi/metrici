@@ -75,7 +75,19 @@ program
           created: `>=${created.toISOString().split("T")[0]}`,
           per_page: 100,
         });
-        return response.data;
+        return {
+          total_count: response.data.total_count,
+          workflow_runs: response.data.workflow_runs.map((run) => ({
+            id: run.id,
+            head_branch: run.head_branch ?? "",
+            head_sha: run.head_sha,
+            event: run.event,
+            conclusion: run.conclusion ?? "unknown",
+            created_at: run.created_at,
+            run_started_at: run.run_started_at ?? run.created_at,
+            updated_at: run.updated_at,
+          })),
+        };
       },
       async listArtifacts(runId: number) {
         const response = await octokit.actions.listWorkflowRunArtifacts({
