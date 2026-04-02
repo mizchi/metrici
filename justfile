@@ -8,7 +8,8 @@ build:
     pnpm tsc
 
 cli *args:
-    pnpm tsx src/cli.ts {{args}}
+    pnpm run build
+    node dist/cli/main.js {{args}}
 
 core-build:
     pnpm tsc --noEmit

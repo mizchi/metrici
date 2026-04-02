@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import { runImport } from "../../src/cli/commands/import.js";
@@ -103,13 +104,23 @@ describe("import command", () => {
     expect(runs[0].event).toBe("local-import");
   });
 
-  it("imports custom-adapted JSON via custom adapter command", async () => {
-    const fixture = resolve(import.meta.dirname, "../../../vrt-harness/test-results/migration/migration-report.json");
-    const adapterScript = resolve(import.meta.dirname, "../../../vrt-harness/src/flaker-vrt-report-adapter.ts");
+  const customFixture = resolve(
+    import.meta.dirname,
+    "../../../vrt-harness/test-results/migration/migration-report.json",
+  );
+  const customAdapterScript = resolve(
+    import.meta.dirname,
+    "../../../vrt-harness/src/flaker-vrt-report-adapter.ts",
+  );
+  const customAdapterFixtureAvailable =
+    existsSync(customFixture) && existsSync(customAdapterScript);
+  const maybeIt = customAdapterFixtureAvailable ? it : it.skip;
+
+  maybeIt("imports custom-adapted JSON via custom adapter command", async () => {
     const adapterCommand = [
       "node",
       "--experimental-strip-types",
-      adapterScript,
+      customAdapterScript,
       "--scenario-id",
       "migration/tailwind-to-vanilla",
       "--backend",
@@ -118,7 +129,7 @@ describe("import command", () => {
 
     const result = await runImport({
       store,
-      filePath: fixture,
+      filePath: customFixture,
       adapterType: "custom",
       customCommand: adapterCommand,
       commitSha: "vrt123",
