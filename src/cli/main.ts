@@ -216,7 +216,7 @@ program
             head_branch: run.head_branch ?? "",
             head_sha: run.head_sha,
             event: run.event,
-            conclusion: run.conclusion ?? "",
+            conclusion: run.conclusion ?? "unknown",
             created_at: run.created_at,
             run_started_at: run.run_started_at ?? run.created_at,
             updated_at: run.updated_at,
