@@ -1,8 +1,12 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "mizchi/metrici_core/src/main"
+package "mizchi/flaker/src/main"
 
 // Values
 pub fn detect_flaky_json(String) -> String
+
+pub fn resolve_affected_json(String, String) -> String
+
+pub fn sample_hybrid_json(String, String, Int, Int) -> String
 
 pub fn sample_random_json(String, Int, Int) -> String
 

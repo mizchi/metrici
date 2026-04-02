@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import type {
@@ -314,5 +317,21 @@ describe("DuckDBStore", () => {
     const rows = await store.raw<{ answer: number }>("SELECT 42 AS answer");
     expect(rows).toHaveLength(1);
     expect(rows[0].answer).toBe(42);
+  });
+
+  it("creates parent directories for file-backed database paths", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "flaker-duckdb-"));
+    const dbPath = join(tempDir, "nested", ".flaker", "data.duckdb");
+    const fileStore = new DuckDBStore(dbPath);
+
+    try {
+      await fileStore.initialize();
+      const rows = await fileStore.raw<{ answer: number }>("SELECT 1 AS answer");
+      expect(rows[0].answer).toBe(1);
+      expect(existsSync(join(tempDir, "nested", ".flaker"))).toBe(true);
+    } finally {
+      await fileStore.close();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,5 +1,6 @@
 import type { MetricStore } from "../storage/types.js";
 import { runSample } from "./sample.js";
+import type { SamplingMode } from "./sampling-options.js";
 import type { QuarantineManifestEntry } from "../quarantine-manifest.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import {
@@ -15,7 +16,7 @@ export interface RunOpts {
   runner: RunnerAdapter;
   count?: number;
   percentage?: number;
-  mode: "random" | "weighted" | "affected" | "hybrid";
+  mode: SamplingMode;
   seed?: number;
   resolver?: DependencyResolver;
   changedFiles?: string[];

@@ -94,6 +94,10 @@ function detectFlaky(input: DetectInput): DetectOutput {
 }
 
 function sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const arr = [...meta];
   let s = seed >>> 0;
 
@@ -105,15 +109,19 @@ function sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[]
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 
-  return arr.slice(0, count);
+  return arr.slice(0, actualCount);
 }
 
 function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const remaining = [...meta];
   const result: TestMeta[] = [];
   let s = seed >>> 0;
 
-  const n = Math.min(count, remaining.length);
+  const n = actualCount;
   for (let picked = 0; picked < n; picked++) {
     // Compute weights
     const weights = remaining.map((m) => 1.0 + m.flaky_rate);
@@ -141,6 +149,10 @@ function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta
 }
 
 function sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
+  const actualCount = clampSampleCount(count, meta.length);
+  if (actualCount === 0) {
+    return [];
+  }
   const affectedSet = new Set(affectedSuites);
   const selected: TestMeta[] = [];
   const used = new Set<number>();
@@ -152,12 +164,19 @@ function sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number,
   // Priority 3: new
   meta.forEach((m, i) => { if (m.is_new && !used.has(i)) { selected.push(m); used.add(i); } });
   // Priority 4: weighted random for remaining
-  if (selected.length < count) {
+  if (selected.length < actualCount) {
     const remaining = meta.filter((_, i) => !used.has(i));
-    const extra = sampleWeighted(remaining, count - selected.length, seed);
+    const extra = sampleWeighted(remaining, actualCount - selected.length, seed);
     selected.push(...extra);
   }
-  return selected.slice(0, count);
+  return selected.slice(0, actualCount);
+}
+
+function clampSampleCount(count: number, total: number): number {
+  if (!Number.isFinite(count)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(Math.trunc(count), total));
 }
 
 // MoonBit JS backend types

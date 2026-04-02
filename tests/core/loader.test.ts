@@ -54,6 +54,25 @@ describe("loadCore", () => {
     expect(result2).toEqual(result);
   });
 
+  it("clamps negative sample counts to zero", async () => {
+    const core = await loadCore();
+    const meta: TestMeta[] = Array.from({ length: 3 }, (_, i) => ({
+      suite: "s",
+      test_name: `t${i}`,
+      flaky_rate: 0,
+      total_runs: 1,
+      fail_count: 0,
+      last_run_at: "2026-01-01T00:00:00Z",
+      avg_duration_ms: 100,
+      previously_failed: false,
+      is_new: false,
+    }));
+
+    expect(core.sampleRandom(meta, -1, 42)).toEqual([]);
+    expect(core.sampleWeighted(meta, -1, 42)).toEqual([]);
+    expect(core.sampleHybrid(meta, ["s"], -1, 42)).toEqual([]);
+  });
+
   it("sampleWeighted prefers flaky tests", async () => {
     const core = await loadCore();
     const meta: TestMeta[] = [

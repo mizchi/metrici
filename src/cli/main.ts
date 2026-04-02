@@ -12,6 +12,11 @@ import {
 import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
+import {
+  parseSampleCount,
+  parseSamplePercentage,
+  parseSamplingMode,
+} from "./commands/sampling-options.js";
 import { ActrunRunner } from "./runners/actrun.js";
 import { runBisect } from "./commands/bisect.js";
 import { runImport } from "./commands/import.js";
@@ -307,14 +312,11 @@ program
 
       try {
         const changedFiles = parseChangedFiles(opts.changed);
-        const mode = opts.strategy as "random" | "weighted" | "affected" | "hybrid";
+        const mode = parseSamplingMode(opts.strategy);
         const manifest = opts.skipQuarantined
           ? loadQuarantineManifestIfExists({ cwd: process.cwd() })
           : null;
-        const listedTests =
-          opts.skipQuarantined && manifest
-            ? await listRunnerTests(process.cwd(), config.runner)
-            : [];
+        const listedTests = await listRunnerTests(process.cwd(), config.runner);
 
         // Create resolver from config for affected/hybrid
         let resolver;
@@ -325,8 +327,8 @@ program
         const sampled = await runSample({
           store,
           mode,
-          count: opts.count ? Number(opts.count) : undefined,
-          percentage: opts.percentage ? Number(opts.percentage) : undefined,
+          count: parseSampleCount(opts.count),
+          percentage: parseSamplePercentage(opts.percentage),
           skipQuarantined: opts.skipQuarantined,
           resolver,
           changedFiles,
@@ -362,7 +364,7 @@ program
 
       try {
         const changedFiles = parseChangedFiles(opts.changed);
-        const mode = opts.strategy as "random" | "weighted" | "affected" | "hybrid";
+        const mode = parseSamplingMode(opts.strategy);
         const manifest = opts.skipQuarantined
           ? loadQuarantineManifestIfExists({ cwd })
           : null;
@@ -428,8 +430,8 @@ program
           store,
           runner: createRunner(config.runner),
           mode,
-          count: opts.count ? Number(opts.count) : undefined,
-          percentage: opts.percentage ? Number(opts.percentage) : undefined,
+          count: parseSampleCount(opts.count),
+          percentage: parseSamplePercentage(opts.percentage),
           resolver,
           changedFiles,
           skipQuarantined: opts.skipQuarantined,

@@ -2,6 +2,7 @@ import type { MetricStore } from "../storage/types.js";
 import type { TestMeta, MetriciCore } from "../core/loader.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import type { TestId } from "../runners/types.js";
+import type { SamplingMode } from "./sampling-options.js";
 import { loadCore } from "../core/loader.js";
 import { createStableTestId } from "../identity.js";
 import {
@@ -13,7 +14,7 @@ export interface SampleOpts {
   store: MetricStore;
   count?: number;
   percentage?: number;
-  mode: "random" | "weighted" | "affected" | "hybrid";
+  mode: SamplingMode;
   seed?: number;
   resolver?: DependencyResolver;
   changedFiles?: string[];

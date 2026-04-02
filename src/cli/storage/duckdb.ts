@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { SCHEMA_DDL, FLAKY_QUERY } from "./schema.js";
 import { createStableTestId, resolveTestIdentity } from "../identity.js";
 import type {
@@ -28,6 +30,9 @@ export class DuckDBStore implements MetricStore {
       duckdb = await this.loadDuckDBModule();
     } catch (error) {
       throw this.buildDuckDBLoadError(error);
+    }
+    if (this.dbPath !== ":memory:") {
+      mkdirSync(dirname(this.dbPath), { recursive: true });
     }
     this.db = await new Promise<DuckDBDatabase>((resolve, reject) => {
       try {

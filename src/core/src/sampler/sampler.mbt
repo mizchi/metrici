@@ -1,4 +1,15 @@
 ///|
+fn clamp_count(count : Int, total : Int) -> Int {
+  if count <= 0 {
+    0
+  } else if count > total {
+    total
+  } else {
+    count
+  }
+}
+
+///|
 fn lcg_next(state : UInt64) -> UInt64 {
   state * 6364136223846793005UL + 1442695040888963407UL
 }
@@ -13,7 +24,10 @@ pub fn sample_random(
   if n == 0 {
     return []
   }
-  let actual_count = if count > n { n } else { count }
+  let actual_count = clamp_count(count, n)
+  if actual_count == 0 {
+    return []
+  }
   // Copy array for Fisher-Yates shuffle
   let arr = Array::makei(n, fn(i) { meta[i] })
   let mut state = seed
@@ -36,7 +50,10 @@ pub fn sample_weighted(
   if n == 0 {
     return []
   }
-  let actual_count = if count > n { n } else { count }
+  let actual_count = clamp_count(count, n)
+  if actual_count == 0 {
+    return []
+  }
   // Build weights
   let weights = Array::makei(n, fn(i) { 1.0 + meta[i].flaky_rate })
   let selected : Array[@types.TestMeta] = []
@@ -88,6 +105,10 @@ pub fn sample_hybrid(
   count~ : Int,
   seed~ : UInt64
 ) -> Array[@types.TestMeta] {
+  let actual_count = clamp_count(count, meta.length())
+  if actual_count == 0 {
+    return []
+  }
   let affected_set : Map[String, Bool] = {}
   for s in affected_suites {
     affected_set.set(s, true)
@@ -121,22 +142,22 @@ pub fn sample_hybrid(
   }
 
   // Priority 4: fill remaining with weighted random
-  if selected.length() < count {
+  if selected.length() < actual_count {
     let remaining : Array[@types.TestMeta] = []
     for i, m in meta {
       if !used.contains(i) {
         remaining.push(m)
       }
     }
-    let needed = count - selected.length()
+    let needed = actual_count - selected.length()
     let extra = sample_weighted(remaining, count=needed, seed~)
     for m in extra {
       selected.push(m)
     }
   }
 
-  if selected.length() > count {
-    Array::makei(count, fn(i) { selected[i] })
+  if selected.length() > actual_count {
+    Array::makei(actual_count, fn(i) { selected[i] })
   } else {
     selected
   }
