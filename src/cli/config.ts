@@ -58,7 +58,7 @@ export function loadConfig(dir: string): FlakerConfig {
   try {
     content = readFileSync(filePath, "utf-8");
   } catch {
-    throw new Error(`Config file not found: ${filePath}`);
+    throw new Error(`Config file not found: ${filePath}. Run 'flaker init' to create one.`);
   }
   const parsed = parse(content) as unknown as Record<string, unknown>;
   return deepMerge(DEFAULT_CONFIG, parsed);

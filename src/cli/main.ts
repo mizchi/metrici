@@ -1195,11 +1195,29 @@ program
     "flaker sample --strategy affected --changed src/foo.ts",
     "flaker sample --strategy weighted --percentage 20 --skip-quarantined",
   ]);
+  appendHelpText(
+    program.commands.find((command) => command.name() === "sample") as Command,
+    formatHelpExamples("Strategies", [
+      "random    Select tests uniformly at random",
+      "weighted  Prioritize tests with high flaky rates and co-failure correlation",
+      "affected  Select only tests related to changed files (requires --changed)",
+      "hybrid    Combine affected + co-failure + previously-failed + weighted fill (recommended)",
+    ]),
+  );
   appendExamplesToCommand(program.commands.find((command) => command.name() === "run"), [
     "flaker run --strategy hybrid --count 25",
     "flaker run --strategy affected --changed src/foo.ts",
     "flaker run --runner actrun --strategy hybrid --count 50",
   ]);
+  appendHelpText(
+    program.commands.find((command) => command.name() === "run") as Command,
+    formatHelpExamples("Strategies", [
+      "random    Select tests uniformly at random",
+      "weighted  Prioritize tests with high flaky rates and co-failure correlation",
+      "affected  Select only tests related to changed files (requires --changed)",
+      "hybrid    Combine affected + co-failure + previously-failed + weighted fill (recommended)",
+    ]),
+  );
   appendExamplesToCommand(program.commands.find((command) => command.name() === "affected"), [
     "flaker affected src/foo.ts src/bar.ts",
     "flaker affected --changed src/foo.ts,src/bar.ts",
@@ -1244,6 +1262,14 @@ program
   appendExamplesToCommand(program.commands.find((command) => command.name() === "doctor"), [
     "flaker doctor",
   ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "eval-fixture"), [
+    "flaker eval-fixture",
+    "flaker eval-fixture --sweep",
+  ]);
+  appendHelpText(
+    program.commands.find((command) => command.name() === "eval-fixture") as Command,
+    `\nRuns synthetic benchmarks comparing sampling strategies. No config needed.\nOutput: a comparison table showing recall, precision, F1, and efficiency.\nUse --sweep to compare across different co-failure correlation strengths.\n`,
+  );
 
   return program;
 }
@@ -1251,5 +1277,26 @@ program
 const program = createProgram();
 
 if (isDirectCliExecution()) {
-  program.parse();
+  if (process.argv.length <= 2) {
+    program.outputHelp();
+    process.exit(0);
+  }
+
+  program.parseAsync(process.argv).catch((err) => {
+    if (err instanceof Error) {
+      if (err.message.includes("Config file not found") || err.message.includes("flaker.toml")) {
+        console.error(`Error: ${err.message}`);
+        console.error(`Run 'flaker init --owner <org> --name <repo>' to create one.`);
+        process.exit(1);
+      }
+      if (err.message.includes("DuckDB") || err.message.includes("duckdb")) {
+        console.error(`Error: ${err.message}`);
+        console.error(`Run 'flaker doctor' to check your setup.`);
+        process.exit(1);
+      }
+    }
+    // Unknown error - show message without full stack
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
 }
