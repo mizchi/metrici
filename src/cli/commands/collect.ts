@@ -6,6 +6,7 @@ import type { TestResultAdapter } from "../adapters/types.js";
 import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
 import { toStoredTestResult } from "../storage/test-result-mapper.js";
 import { collectCommitChanges } from "./collect-commit-changes.js";
+import { exportRunParquet } from "./export-parquet.js";
 
 export interface GitHubClient {
   listWorkflowRuns(): Promise<{
@@ -35,6 +36,7 @@ export interface CollectOpts {
   adapterType: string;
   artifactName?: string;
   customCommand?: string;
+  storagePath?: string;
 }
 
 export interface CollectFailure {
@@ -116,6 +118,7 @@ export async function collectWorkflowRuns(
     repo,
     adapterType,
     customCommand,
+    storagePath,
   } = opts;
   const artifactName = opts.artifactName ?? defaultArtifactNameForAdapter(adapterType);
   const adapterConfig = customCommand ?? "";
@@ -221,6 +224,9 @@ export async function collectWorkflowRuns(
       }
       await collectCommitChanges(store, process.cwd(), run.head_sha);
       await store.recordCollectedArtifact(collectedRecord);
+      if (storagePath) {
+        await exportRunParquet(store, run.id, storagePath);
+      }
 
       runsCollected++;
       testsCollected += testResults.length;

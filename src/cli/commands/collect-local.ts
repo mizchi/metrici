@@ -8,12 +8,14 @@ import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
 import { toStoredTestResult } from "../storage/test-result-mapper.js";
 import { collectCommitChanges } from "./collect-commit-changes.js";
 import { resolveCurrentCommitSha } from "../core/git.js";
+import { exportRunParquet } from "./export-parquet.js";
 
 export interface CollectLocalOpts {
   store: MetricStore;
   last?: number;
   exec?: (cmd: string) => string;
   workspace?: string;
+  storagePath?: string;
 }
 
 export interface CollectLocalResult {
@@ -113,6 +115,9 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
     const realCommitSha = resolveCurrentCommitSha(workspace);
     if (realCommitSha) {
       await collectCommitChanges(store, workspace, realCommitSha);
+    }
+    if (opts.storagePath) {
+      await exportRunParquet(store, runId, opts.storagePath);
     }
 
     runsImported++;

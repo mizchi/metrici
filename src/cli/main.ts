@@ -317,6 +317,7 @@ program
         adapterType: config.adapter.type,
         artifactName: config.adapter.artifact_name,
         customCommand: config.adapter.command,
+        storagePath: config.storage.path,
       });
       const formatted = formatCollectSummary(result, opts.json ? "json" : "text");
       console.log(formatted);
@@ -1084,6 +1085,7 @@ program
       const result = await runCollectLocal({
         store,
         last: opts.last ? Number(opts.last) : undefined,
+        storagePath: config.storage.path,
       });
       console.log(`Imported ${result.runsImported} runs, ${result.testsImported} test results`);
       if (result.runsImported > 0) {
