@@ -53,7 +53,7 @@ import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
 import { generateFixture } from "./eval/fixture-generator.js";
 import { loadFixtureIntoStore } from "./eval/fixture-loader.js";
 import { evaluateFixture } from "./eval/fixture-evaluator.js";
-import { formatEvalFixtureReport, formatSweepReport } from "./eval/fixture-report.js";
+import { formatEvalFixtureReport, formatSweepReport, formatMultiSweepReport } from "./eval/fixture-report.js";
 import { runDoctor, formatDoctorReport } from "./commands/doctor.js";
 import {
   runAffected,
@@ -1166,6 +1166,7 @@ program
   .option("--sample-percentage <n>", "Sample percentage", "20")
   .option("--seed <n>", "Random seed", "42")
   .option("--sweep", "Sweep co-failure strength 0.0-1.0")
+  .option("--multi-sweep", "Multi-parameter sweep (testCount × flakyRate × coFailure × sample%)")
   .action(async (opts) => {
     // Validate inputs
     const testCount = parseInt(opts.tests, 10);
@@ -1193,7 +1194,24 @@ program
 
     const baseConfig = { testCount, commitCount, flakyRate, coFailureStrength, filesPerCommit, testsPerFile, samplePercentage, seed };
 
-    if (opts.sweep) {
+    if (opts.multiSweep) {
+      const { runSweep } = await import("./eval/fixture-evaluator.js");
+      const sweepResults = await runSweep(
+        baseConfig,
+        {
+          testCounts: [50, 200, 500],
+          flakyRates: [0.05, 0.15],
+          coFailureStrengths: [0.3, 0.6, 0.9],
+          samplePercentages: [10, 20, 40],
+        },
+        async () => {
+          const s = new DuckDBStore(":memory:");
+          await s.initialize();
+          return { store: s, close: () => s.close() };
+        },
+      );
+      console.log(formatMultiSweepReport(sweepResults));
+    } else if (opts.sweep) {
       const strengths = [0.0, 0.25, 0.5, 0.75, 1.0];
       const reports = [];
       for (const strength of strengths) {
