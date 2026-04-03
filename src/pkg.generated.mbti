@@ -10,6 +10,8 @@ pub fn aggregate_report(Array[@contracts.ReportAggregateShardInput]) -> @contrac
 
 pub fn build_affected_report(Array[@contracts.AffectedTargetInput], Array[@contracts.AffectedDirectSelectionInput], Array[@contracts.AffectedTransitiveTaskInput], Array[String]) -> @contracts.AffectedReportCoreOutput
 
+pub fn build_affected_report_from_input(@contracts.AffectedReportInput) -> @contracts.AffectedReportCoreOutput
+
 pub fn build_reverse_deps(@contracts.DependencyGraphInput) -> Array[@contracts.ReverseDepEntry]
 
 pub fn build_sampling_kpi(Array[@contracts.EvalCommitSignalInput]) -> @contracts.SamplingKpiOutput
@@ -62,6 +64,8 @@ pub fn topological_sort(@contracts.DependencyGraphInput) -> Array[String]
 pub using @contracts {type AffectedDirectSelectionInput}
 
 pub using @contracts {type AffectedReportCoreOutput}
+
+pub using @contracts {type AffectedReportInput}
 
 pub using @contracts {type AffectedReportSummaryOutput}
 

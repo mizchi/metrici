@@ -25,6 +25,13 @@ pub(all) struct AffectedReportCoreOutput {
   summary : AffectedReportSummaryOutput
 } derive(Eq, Show, ToJson, @json.FromJson)
 
+pub(all) struct AffectedReportInput {
+  targets : Array[AffectedTargetInput]
+  direct_selections : Array[AffectedDirectSelectionInput]
+  transitive_tasks : Array[AffectedTransitiveTaskInput]
+  unmatched : Array[String]
+} derive(Eq, Show, ToJson, @json.FromJson)
+
 pub(all) struct AffectedReportSummaryOutput {
   matched_count : Int
   selected_count : Int

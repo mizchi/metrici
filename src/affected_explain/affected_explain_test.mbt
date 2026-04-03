@@ -116,3 +116,42 @@ test "build_affected_report combines direct and transitive selections" {
   ])
   assert_eq(result.unmatched, ["README.md"])
 }
+
+///|
+test "build_affected_report_from_input is consumer-friendly facade" {
+  let result = build_affected_report_from_input(@types.AffectedReportInput::{
+    targets: [
+      @types.AffectedTargetInput::{
+        spec: "tests/core.spec.ts",
+        task_id: "core",
+        filter: None,
+      },
+      @types.AffectedTargetInput::{
+        spec: "tests/app.spec.ts",
+        task_id: "app",
+        filter: None,
+      },
+    ],
+    direct_selections: [
+      @types.AffectedDirectSelectionInput::{
+        spec: "tests/core.spec.ts",
+        task_id: "core",
+        filter: None,
+        matched_paths: ["src/core/a.ts"],
+        match_reasons: ["package:core"],
+      },
+    ],
+    transitive_tasks: [
+      @types.AffectedTransitiveTaskInput::{
+        task_id: "app",
+        included_by: ["core"],
+        match_reasons: ["dependency:core"],
+      },
+    ],
+    unmatched: [],
+  })
+
+  assert_eq(result.summary.matched_count, 1)
+  assert_eq(result.summary.selected_count, 2)
+  assert_eq(result.unmatched, [])
+}

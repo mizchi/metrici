@@ -54,6 +54,7 @@ pub using @contracts {
   type AffectedTargetInput,
   type AffectedDirectSelectionInput,
   type AffectedTransitiveTaskInput,
+  type AffectedReportInput,
   type AffectedSelectionOutput,
   type AffectedReportSummaryOutput,
   type AffectedReportCoreOutput,
@@ -79,7 +80,11 @@ pub using @sampling {
 pub using @affected {resolve_affected}
 
 ///|
-pub using @affected_explain {dedupe_affected_targets, build_affected_report}
+pub using @affected_explain {
+  dedupe_affected_targets,
+  build_affected_report,
+  build_affected_report_from_input,
+}
 
 ///|
 /// Stable test identity

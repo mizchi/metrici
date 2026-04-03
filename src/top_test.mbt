@@ -124,4 +124,22 @@ test "root package exposes reporting, policy, and metrics helpers" {
   ])
   assert_eq(kpi.matched_commits, 1)
   assert_eq(kpi.avg_saved_minutes, Some(4.0))
+
+  let report = build_affected_report_from_input(AffectedReportInput::{
+    targets: [
+      AffectedTargetInput::{ spec: "tests/a.spec.ts", task_id: "task-a", filter: None },
+    ],
+    direct_selections: [
+      AffectedDirectSelectionInput::{
+        spec: "tests/a.spec.ts",
+        task_id: "task-a",
+        filter: None,
+        matched_paths: ["src/a.ts"],
+        match_reasons: ["package:a"],
+      },
+    ],
+    transitive_tasks: [],
+    unmatched: [],
+  })
+  assert_eq(report.summary.selected_count, 1)
 }

@@ -91,7 +91,7 @@ The root library surface intentionally re-exports pure logic only:
 
 - flaky detection: `detect_flaky`
 - sampling: `build_sampling_meta`, `sample_random`, `sample_weighted`, `sample_hybrid`
-- affected analysis: `resolve_affected`, `build_affected_report`
+- affected analysis: `resolve_affected`, `build_affected_report`, `build_affected_report_from_input`
 - stable identity: `create_stable_test_id`, `resolve_test_identity`
 - graph helpers: `find_affected_nodes`, `expand_transitive`, `topological_sort`
 - report reducers: `summarize_report`, `classify_report_diff`, `aggregate_report`

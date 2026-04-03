@@ -8,6 +8,8 @@ import {
 // Values
 pub fn build_affected_report(Array[@contracts.AffectedTargetInput], Array[@contracts.AffectedDirectSelectionInput], Array[@contracts.AffectedTransitiveTaskInput], Array[String]) -> @contracts.AffectedReportCoreOutput
 
+pub fn build_affected_report_from_input(@contracts.AffectedReportInput) -> @contracts.AffectedReportCoreOutput
+
 pub fn dedupe_affected_targets(Array[@contracts.AffectedTargetInput]) -> Array[@contracts.AffectedTargetInput]
 
 // Errors

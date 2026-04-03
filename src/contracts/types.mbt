@@ -396,6 +396,14 @@ pub(all) struct AffectedTransitiveTaskInput {
 } derive(Eq, Show, FromJson, ToJson)
 
 ///|
+pub(all) struct AffectedReportInput {
+  targets : Array[AffectedTargetInput]
+  direct_selections : Array[AffectedDirectSelectionInput]
+  transitive_tasks : Array[AffectedTransitiveTaskInput]
+  unmatched : Array[String]
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
 pub(all) struct AffectedSelectionOutput {
   task_id : String
   spec : String

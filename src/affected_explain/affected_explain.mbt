@@ -212,3 +212,15 @@ pub fn build_affected_report(
     },
   }
 }
+
+///|
+pub fn build_affected_report_from_input(
+  input : @types.AffectedReportInput,
+) -> @types.AffectedReportCoreOutput {
+  build_affected_report(
+    input.targets,
+    input.direct_selections,
+    input.transitive_tasks,
+    input.unmatched,
+  )
+}
