@@ -117,7 +117,7 @@ export interface MetriciCore {
   buildReverseDeps(graph: DependencyGraph): Map<string, string[]>;
   topologicalSort(graph: DependencyGraph): string[];
   getAffectedTestPatterns(graph: DependencyGraph, affectedIds: string[]): string[];
-  selectByCoverage(coverages: { suite: string; edges: string[] }[], changedEdges: string[], count: number): { selected: string[]; covered_edges: number; total_changed_edges: number; coverage_ratio: number };
+  selectByCoverage(coverages: { suite: string; edges: string[] }[], changedEdges: string[], count: number): { selected: string[]; coveredEdges: number; totalChangedEdges: number; coverageRatio: number };
   bucketizeRate(rate: number): number;
   trainGBDT(data: { features: number[]; label: number }[], numTrees: number, learningRate: number): unknown;
   predictGBDT(model: unknown, features: number[]): number;
@@ -598,7 +598,13 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
       return JSON.parse(mbt.get_affected_test_patterns_json(serializeGraph(graph), JSON.stringify(affectedIds)));
     },
     selectByCoverage(coverages, changedEdges, count) {
-      return JSON.parse(mbt.select_by_coverage_json(JSON.stringify(coverages), JSON.stringify(changedEdges), count));
+      const raw = JSON.parse(mbt.select_by_coverage_json(JSON.stringify(coverages), JSON.stringify(changedEdges), count));
+      return {
+        selected: raw.selected,
+        coveredEdges: raw.covered_edges,
+        totalChangedEdges: raw.total_changed_edges,
+        coverageRatio: raw.coverage_ratio,
+      };
     },
     bucketizeRate(rate) {
       return mbt.bucketize_rate_json(rate);
@@ -681,6 +687,10 @@ export function loadCoreSync(): MetriciCore {
     buildReverseDeps: buildReverseDepsFallback,
     topologicalSort: topologicalSortFallback,
     getAffectedTestPatterns: getAffectedTestPatternsFallback,
+    selectByCoverage: selectByCoverageFallback,
+    bucketizeRate: bucketizeRateFallback,
+    trainGBDT: trainGBDTFallback,
+    predictGBDT: predictGBDTFallback,
   };
 }
 
