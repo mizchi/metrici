@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_DDL, FLAKY_QUERY } from "./schema.js";
+import { SCHEMA_DDL, FLAKY_QUERY, CO_FAILURE_QUERY } from "./schema.js";
 import { createStableTestId, resolveTestIdentity } from "../identity.js";
 import type {
   MetricStore,
@@ -17,6 +17,8 @@ import type {
   SamplingRunRecord,
   SamplingRunTestRecord,
   CommitChange,
+  CoFailureResult,
+  CoFailureQueryOpts,
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
@@ -471,6 +473,39 @@ export class DuckDBStore implements MetricStore {
       [commitSha],
     );
     return rows.length > 0;
+  }
+
+  async queryCoFailures(opts: CoFailureQueryOpts): Promise<CoFailureResult[]> {
+    const windowDays = opts.windowDays ?? 90;
+    const minCoRuns = opts.minCoRuns ?? 3;
+    const rows = await this.all(CO_FAILURE_QUERY, [windowDays.toString(), minCoRuns]);
+    return rows.map((r: any) => ({
+      filePath: r.file_path,
+      testId: r.test_id,
+      suite: r.suite,
+      testName: r.test_name,
+      coRuns: r.co_runs,
+      coFailures: r.co_failures,
+      coFailureRate: r.co_failure_rate,
+    }));
+  }
+
+  async getCoFailureBoosts(
+    changedFiles: string[],
+    opts?: CoFailureQueryOpts,
+  ): Promise<Map<string, number>> {
+    if (changedFiles.length === 0) {
+      return new Map();
+    }
+    const allCoFailures = await this.queryCoFailures(opts ?? {});
+    const changedSet = new Set(changedFiles);
+    const boosts = new Map<string, number>();
+    for (const cf of allCoFailures) {
+      if (!changedSet.has(cf.filePath)) continue;
+      const existing = boosts.get(cf.testId) ?? 0;
+      boosts.set(cf.testId, Math.max(existing, cf.coFailureRate / 100));
+    }
+    return boosts;
   }
 
   // Private helpers

@@ -103,6 +103,28 @@ CREATE TABLE IF NOT EXISTS commit_changes (
 );
 `;
 
+export const CO_FAILURE_QUERY = `
+SELECT
+  cc.file_path,
+  COALESCE(tr.test_id, '') AS test_id,
+  tr.suite,
+  tr.test_name,
+  COUNT(*)::INTEGER AS co_runs,
+  COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')
+    OR (tr.retry_count > 0 AND tr.status = 'passed'))::INTEGER AS co_failures,
+  ROUND(
+    COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')
+      OR (tr.retry_count > 0 AND tr.status = 'passed'))
+    * 100.0 / COUNT(*), 2
+  )::DOUBLE AS co_failure_rate
+FROM commit_changes cc
+JOIN test_results tr ON cc.commit_sha = tr.commit_sha
+WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+GROUP BY cc.file_path, tr.test_id, tr.suite, tr.test_name
+HAVING co_runs >= ? AND co_failures > 0
+ORDER BY co_failure_rate DESC
+`;
+
 export const FLAKY_QUERY = `
 WITH recent AS (
   SELECT * FROM test_results

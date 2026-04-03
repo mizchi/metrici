@@ -140,6 +140,21 @@ export interface CommitChange {
   deletions: number;
 }
 
+export interface CoFailureResult {
+  filePath: string;
+  testId: string;
+  suite: string;
+  testName: string;
+  coRuns: number;
+  coFailures: number;
+  coFailureRate: number;
+}
+
+export interface CoFailureQueryOpts {
+  windowDays?: number;
+  minCoRuns?: number;
+}
+
 export interface MetricStore {
   initialize(): Promise<void>;
   close(): Promise<void>;
@@ -161,4 +176,6 @@ export interface MetricStore {
   isQuarantined(test: TestSelector): Promise<boolean>;
   insertCommitChanges(commitSha: string, changes: CommitChange[]): Promise<void>;
   hasCommitChanges(commitSha: string): Promise<boolean>;
+  queryCoFailures(opts: CoFailureQueryOpts): Promise<CoFailureResult[]>;
+  getCoFailureBoosts(changedFiles: string[], opts?: CoFailureQueryOpts): Promise<Map<string, number>>;
 }
