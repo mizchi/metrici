@@ -37,20 +37,17 @@ test "root package exposes sampling and identity helpers" {
 
   assert_eq(sampled.length(), 1)
 
-  let stable_id = create_stable_test_id(
-    @contracts.StableTestIdentityInput::{
-      suite: "tests/b.spec.ts",
-      test_name: "b",
-      task_id: Some("task-b"),
-      filter: Some("@smoke"),
-      variant: None,
-      test_id: None,
-    },
-  )
+  let stable_id = create_stable_test_id(@contracts.StableTestIdentityInput::{
+    suite: "tests/b.spec.ts",
+    test_name: "b",
+    task_id: Some("task-b"),
+    filter: Some("@smoke"),
+    variant: None,
+    test_id: None,
+  })
 
   assert_eq(
-    stable_id,
-    "{\"taskId\":\"task-b\",\"suite\":\"tests/b.spec.ts\",\"testName\":\"b\",\"filter\":\"@smoke\",\"variant\":null}",
+    stable_id, "{\"taskId\":\"task-b\",\"suite\":\"tests/b.spec.ts\",\"testName\":\"b\",\"filter\":\"@smoke\",\"variant\":null}",
   )
 }
 

@@ -1,9 +1,13 @@
 ///| Public re-export surface for `mizchi/flaker`.
+
 ///|
+
 ///| Core data contracts are also available directly from
+
 ///| `mizchi/flaker/contracts` when a stricter boundary is preferred.
 
-///| Shared data contracts
+///|
+/// Shared data contracts
 pub using @contracts {
   type StableVariantEntryInput,
   type TestMeta,
@@ -57,10 +61,12 @@ pub using @contracts {
   type ResolvedStableTestIdentityOutput,
 }
 
-///| Flaky-test detection
+///|
+/// Flaky-test detection
 pub using @flaky_detector {detect_flaky}
 
-///| Sampling metadata and strategies
+///|
+/// Sampling metadata and strategies
 pub using @sampling {
   build_sampling_meta,
   sample_random,
@@ -68,20 +74,19 @@ pub using @sampling {
   sample_hybrid,
 }
 
-///| Affected selection and explain helpers
+///|
+/// Affected selection and explain helpers
 pub using @affected {resolve_affected}
-pub using @affected_explain {
-  dedupe_affected_targets,
-  build_affected_report,
-}
 
-///| Stable test identity
-pub using @identity {
-  create_stable_test_id,
-  resolve_test_identity,
-}
+///|
+pub using @affected_explain {dedupe_affected_targets, build_affected_report}
 
-///| Generic dependency-graph helpers
+///|
+/// Stable test identity
+pub using @identity {create_stable_test_id, resolve_test_identity}
+
+///|
+/// Generic dependency-graph helpers
 pub using @graph {
   find_affected_nodes,
   expand_transitive,
@@ -90,12 +95,18 @@ pub using @graph {
   get_affected_test_patterns,
 }
 
-///| Report reducers
+///|
+/// Report reducers
 pub using @report_summary {summarize_report}
+
+///|
 pub using @report_diff {classify_report_diff}
+
+///|
 pub using @report_aggregate {aggregate_report}
 
-///| Quarantine policy
+///|
+/// Quarantine policy
 pub using @quarantine {
   summarize_quarantine,
   find_matching_quarantine,
@@ -103,8 +114,10 @@ pub using @quarantine {
   compute_quarantine_exit_code,
 }
 
-///| Config ownership analysis
+///|
+/// Config ownership analysis
 pub using @config {run_config_check}
 
-///| Evaluation metrics
+///|
+/// Evaluation metrics
 pub using @eval {build_sampling_kpi}
