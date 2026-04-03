@@ -1276,6 +1276,34 @@ program
     }
   });
 
+// --- context ---
+program
+  .command("context")
+  .description("Show environment data and strategy characteristics for decision-making")
+  .option("--json", "Output as JSON for programmatic consumption")
+  .action(async (opts) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+
+    try {
+      const hasResolver = !!(config as any).affected;
+      const { buildContext, formatContext } = await import("./commands/context.js");
+      const ctx = await buildContext(store, {
+        storagePath: config.storage.path,
+        resolverConfigured: hasResolver,
+      });
+
+      if (opts.json) {
+        console.log(JSON.stringify(ctx, null, 2));
+      } else {
+        console.log(formatContext(ctx));
+      }
+    } finally {
+      await store.close();
+    }
+  });
+
 // --- doctor ---
 program
   .command("doctor")
@@ -1369,6 +1397,10 @@ program
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "doctor"), [
     "flaker doctor",
+  ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "context"), [
+    "flaker context",
+    "flaker context --json",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "eval-fixture"), [
     "flaker eval-fixture",
