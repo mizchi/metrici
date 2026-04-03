@@ -30,13 +30,14 @@ describe("evaluateFixture", () => {
     await loadFixtureIntoStore(store, fixture);
 
     const results = await evaluateFixture(store, fixture);
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     expect(results.map((r) => r.strategy)).toEqual([
       "random",
       "weighted",
       "weighted+co-failure",
       "hybrid+co-failure",
       "coverage-guided",
+      "gbdt",
     ]);
   });
 
