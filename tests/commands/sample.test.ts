@@ -260,6 +260,7 @@ describe("sample command without history", () => {
         changedFiles: ["src/cmd/bit/verify_tag.mbt"],
         candidateCount: 100,
         selectedCount: 15,
+        holdoutCount: 0,
         sampleRatio: 15,
         estimatedSavedTests: 85,
         estimatedSavedMinutes: 12.3,

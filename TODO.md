@@ -383,5 +383,47 @@ coverage-guided fuzzing の知見をテスト選択に応用する。
 - [ ] **Antithesis 的拡張**: 実行順序・タイミング・環境のミューテーションによるフレーキー原因特定
 - [ ] カバレッジデータの収集方法を決める（Istanbul/V8 coverage, playwright --coverage 等）
 
+## 機能評価（効く / 効かないケースの検証）
+
+各機能を合成フィクスチャと実データの両面で評価し、どのシナリオで有効か・無効かを明確にする。
+
+### 評価対象と検証観点
+
+- [ ] **Holdout サンプリング**
+  - 見逃し率（false negative rate）の計測が実際に機能するか
+  - holdout ratio の適正値（5%? 10%?）— 少なすぎると検出力不足、多すぎると時間節約が減る
+  - 合成フィクスチャで「holdout が見逃しを検出できたか」をシミュレーション
+  - 実データで holdout テストの失敗率を計測し、本選択との差を比較
+
+- [ ] **GBDT サンプリング戦略**
+  - `flaker train` → `flaker sample --strategy gbdt` の E2E パイプラインが動作するか
+  - eval-fixture で gbdt strategy を他戦略と同条件で比較（recall, precision, F1）
+  - 効くケース: 十分な学習データ（100+ commits）、安定した co-failure パターン
+  - 効かないケース: 学習データが少ない（<30 commits）、フレーキーパターンが急変（concept drift）
+  - weighted / hybrid に対する gbdt の優位性がどの規模から現れるか
+
+- [ ] **Co-failure ブースト（Stage 1）**
+  - 強相関シナリオ（特定ファイル変更 → 特定テスト失敗）での recall 向上を確認
+  - 弱相関・ランダムシナリオでのノイズ耐性（誤選択が増えないか）
+  - α 自動チューニングが安定的に収束するか
+  - co-failure window（90日 vs 30日 vs 180日）の感度分析
+
+- [ ] **Coverage-guided サンプリング**
+  - greedy set cover が実カバレッジデータで冗長排除できるか
+  - カバレッジデータなし時のフォールバックが適切か
+  - AFL バケット化のノイズ削減効果
+
+- [ ] **Hybrid 戦略の優先度階層**
+  - 各 priority tier（affected → co-failure → previously_failed → new → weighted）の選択割合
+  - tier 間のバランスが偏りすぎないか（affected が全枠を食い潰すケースなど）
+  - count が小さい時と大きい時で挙動が異なるか
+
+### 評価方法
+
+1. **合成フィクスチャ拡張**: `eval-fixture` に holdout / gbdt を追加し、全戦略を同一条件で比較
+2. **パラメータスイープ**: テスト数 × フレーキー率 × co-failure 強度の組み合わせで網羅的に実行
+3. **レポート生成**: 各シナリオの recall / precision / F1 / 見逃し率をマークダウンテーブルで出力
+4. **実リポジトリ検証**: flaker 自身のテスト履歴（dogfooding）で実データ評価
+
 ## 完了済み
 - [x] MoonBit 未ビルド時でも affected target を解決できる TypeScript fallback を実装

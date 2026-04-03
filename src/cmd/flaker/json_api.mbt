@@ -375,3 +375,12 @@ pub fn predict_batch_gbdt_json(
   let result = @gbdt.predict_batch(model, batch)
   result.to_json().stringify()
 }
+
+///|
+pub fn generate_fixture_json(config_json : String) -> String {
+  let config : @fixture.FixtureConfig = try! @json.from_json(
+    try! @json.parse(config_json),
+  )
+  let result = @fixture.generate_fixture(config)
+  result.to_json().stringify()
+}

@@ -131,6 +131,7 @@ export interface SamplingRunTestRecord {
   taskId?: string | null;
   filter?: string | null;
   testId?: string | null;
+  isHoldout?: boolean;
 }
 
 export interface CommitChange {

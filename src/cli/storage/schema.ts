@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS sampling_run_tests (
   suite           VARCHAR NOT NULL,
   test_name       VARCHAR NOT NULL,
   filter_text     VARCHAR,
+  is_holdout      BOOLEAN DEFAULT FALSE,
   PRIMARY KEY (sampling_run_id, ordinal)
 );
 

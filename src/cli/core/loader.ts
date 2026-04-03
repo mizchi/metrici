@@ -16,6 +16,9 @@ import {
   trainGBDT as trainGBDTImport,
   predictGBDT as predictGBDTImport,
 } from "../eval/gbdt.js";
+import {
+  generateFixture as generateFixtureImport,
+} from "../eval/fixture-generator.js";
 
 function bucketizeRateFallback(rate: number): number {
   if (rate <= 0) return 0;
@@ -32,6 +35,30 @@ function trainGBDTFallback(data: { features: number[]; label: number }[], numTre
 
 function predictGBDTFallback(model: unknown, features: number[]): number {
   return predictGBDTImport(model as any, features);
+}
+
+function generateFixtureFallback(config: FixtureConfig): FixtureData {
+  const tsResult = generateFixtureImport({
+    testCount: config.test_count,
+    commitCount: config.commit_count,
+    flakyRate: config.flaky_rate,
+    coFailureStrength: config.co_failure_strength,
+    filesPerCommit: config.files_per_commit,
+    testsPerFile: config.tests_per_file,
+    samplePercentage: config.sample_percentage,
+    seed: config.seed,
+  });
+  return {
+    tests: tsResult.tests.map((t) => ({ suite: t.suite, test_name: t.testName, is_flaky: t.isFlaky })),
+    files: tsResult.files,
+    file_deps: tsResult.files.map((f) => ({ file: f, suites: tsResult.fileDeps.get(f) ?? [] })),
+    commits: tsResult.commits.map((c) => ({
+      sha: c.sha,
+      changed_files: c.changedFiles.map((cf) => ({ file_path: cf.filePath, change_type: cf.changeType })),
+      test_results: c.testResults.map((tr) => ({ suite: tr.suite, test_name: tr.testName, status: tr.status })),
+    })),
+    config,
+  };
 }
 
 export interface DetectInput {
@@ -121,6 +148,30 @@ export interface MetriciCore {
   bucketizeRate(rate: number): number;
   trainGBDT(data: { features: number[]; label: number }[], numTrees: number, learningRate: number): unknown;
   predictGBDT(model: unknown, features: number[]): number;
+  generateFixture(config: FixtureConfig): FixtureData;
+}
+
+export interface FixtureConfig {
+  test_count: number;
+  commit_count: number;
+  flaky_rate: number;
+  co_failure_strength: number;
+  files_per_commit: number;
+  tests_per_file: number;
+  sample_percentage: number;
+  seed: number;
+}
+
+export interface FixtureData {
+  tests: { suite: string; test_name: string; is_flaky: boolean }[];
+  files: string[];
+  file_deps: { file: string; suites: string[] }[];
+  commits: {
+    sha: string;
+    changed_files: { file_path: string; change_type: string }[];
+    test_results: { suite: string; test_name: string; status: string }[];
+  }[];
+  config: FixtureConfig;
 }
 
 interface SerializableGraphNode {
@@ -503,6 +554,7 @@ interface MbtJsExports {
   train_gbdt_json: (data: string, numTrees: number, learningRate: number) => string;
   predict_gbdt_json: (model: string, features: string) => number;
   predict_batch_gbdt_json: (model: string, batch: string) => string;
+  generate_fixture_json: (config: string) => string;
 }
 
 function serializeGraph(graph: DependencyGraph): string {
@@ -544,33 +596,36 @@ function normalizeMetaBoosts(result: TestMeta[], inputMeta: TestMeta[]): TestMet
   });
 }
 
+/** Call MoonBit JSON bridge if available, otherwise use TS fallback */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mbtOrFallback<T>(mbtFn: unknown, bridge: T, fallback: T): T {
+  return typeof mbtFn === "function" ? bridge : fallback;
+}
+
 function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
   return {
     detectFlaky(input: DetectInput): DetectOutput {
       return JSON.parse(mbt.detect_flaky_json(JSON.stringify(input)));
     },
-    sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+    sampleRandom(meta, count, seed) {
       return normalizeMetaBoosts(
         JSON.parse(mbt.sample_random_json(JSON.stringify(meta), count, seed)),
         meta,
       );
     },
-    sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[] {
+    sampleWeighted(meta, count, seed) {
       return normalizeMetaBoosts(
         JSON.parse(mbt.sample_weighted_json(JSON.stringify(meta), count, seed)),
         meta,
       );
     },
-    sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
+    sampleHybrid(meta, affectedSuites, count, seed) {
       return normalizeMetaBoosts(
         JSON.parse(mbt.sample_hybrid_json(JSON.stringify(meta), JSON.stringify(affectedSuites), count, seed)),
         meta,
       );
     },
-    buildSamplingMeta(
-      historyRows: SamplingHistoryRowInput[],
-      listedTests: SamplingListedTestInput[],
-    ): TestMeta[] {
+    buildSamplingMeta(historyRows, listedTests) {
       return JSON.parse(
         mbt.build_sampling_meta_json(
           JSON.stringify(historyRows.map(normalizeSamplingHistoryRow)),
@@ -578,43 +633,53 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
         ),
       );
     },
-    resolveAffected(workflowText: string, changedPaths: string[]): string[] {
+    resolveAffected(workflowText, changedPaths) {
       return JSON.parse(mbt.resolve_affected_json(workflowText, JSON.stringify(changedPaths)));
     },
-    findAffectedNodes(graph: DependencyGraph, changedFiles: string[]): string[] {
+    findAffectedNodes(graph, changedFiles) {
       return JSON.parse(mbt.find_affected_nodes_json(serializeGraph(graph), JSON.stringify(changedFiles)));
     },
-    expandTransitive(graph: DependencyGraph, initial: Set<string>): string[] {
+    expandTransitive(graph, initial) {
       return JSON.parse(mbt.expand_transitive_json(serializeGraph(graph), JSON.stringify([...initial])));
     },
-    buildReverseDeps(graph: DependencyGraph): Map<string, string[]> {
+    buildReverseDeps(graph) {
       const entries = JSON.parse(mbt.build_reverse_deps_json(serializeGraph(graph))) as ReverseDepEntry[];
       return deserializeReverseDeps(entries);
     },
-    topologicalSort(graph: DependencyGraph): string[] {
+    topologicalSort(graph) {
       return JSON.parse(mbt.topological_sort_json(serializeGraph(graph)));
     },
-    getAffectedTestPatterns(graph: DependencyGraph, affectedIds: string[]): string[] {
+    getAffectedTestPatterns(graph, affectedIds) {
       return JSON.parse(mbt.get_affected_test_patterns_json(serializeGraph(graph), JSON.stringify(affectedIds)));
     },
-    selectByCoverage(coverages, changedEdges, count) {
-      const raw = JSON.parse(mbt.select_by_coverage_json(JSON.stringify(coverages), JSON.stringify(changedEdges), count));
-      return {
-        selected: raw.selected,
-        coveredEdges: raw.covered_edges,
-        totalChangedEdges: raw.total_changed_edges,
-        coverageRatio: raw.coverage_ratio,
-      };
-    },
-    bucketizeRate(rate) {
-      return mbt.bucketize_rate_json(rate);
-    },
-    trainGBDT(data, numTrees, learningRate) {
-      return JSON.parse(mbt.train_gbdt_json(JSON.stringify(data), numTrees, learningRate));
-    },
-    predictGBDT(model, features) {
-      return mbt.predict_gbdt_json(JSON.stringify(model), JSON.stringify(features));
-    },
+    selectByCoverage: mbtOrFallback(
+      mbt.select_by_coverage_json,
+      (coverages, changedEdges, count) => {
+        const raw = JSON.parse(mbt.select_by_coverage_json(JSON.stringify(coverages), JSON.stringify(changedEdges), count));
+        return { selected: raw.selected, coveredEdges: raw.covered_edges, totalChangedEdges: raw.total_changed_edges, coverageRatio: raw.coverage_ratio };
+      },
+      selectByCoverageFallback,
+    ),
+    bucketizeRate: mbtOrFallback(
+      mbt.bucketize_rate_json,
+      (rate) => mbt.bucketize_rate_json(rate),
+      bucketizeRateFallback,
+    ),
+    trainGBDT: mbtOrFallback(
+      mbt.train_gbdt_json,
+      (data, numTrees, learningRate) => JSON.parse(mbt.train_gbdt_json(JSON.stringify(data), numTrees, learningRate)),
+      trainGBDTFallback,
+    ),
+    predictGBDT: mbtOrFallback(
+      mbt.predict_gbdt_json,
+      (model, features) => mbt.predict_gbdt_json(JSON.stringify(model), JSON.stringify(features)),
+      predictGBDTFallback,
+    ),
+    generateFixture: mbtOrFallback(
+      mbt.generate_fixture_json,
+      (config) => JSON.parse(mbt.generate_fixture_json(JSON.stringify(config))),
+      generateFixtureFallback,
+    ),
   };
 }
 
@@ -660,6 +725,7 @@ export async function loadCore(): Promise<MetriciCore> {
     bucketizeRate: bucketizeRateFallback,
     trainGBDT: trainGBDTFallback,
     predictGBDT: predictGBDTFallback,
+    generateFixture: generateFixtureFallback,
   };
   return cachedCore;
 }
@@ -691,6 +757,7 @@ export function loadCoreSync(): MetriciCore {
     bucketizeRate: bucketizeRateFallback,
     trainGBDT: trainGBDTFallback,
     predictGBDT: predictGBDTFallback,
+    generateFixture: generateFixtureFallback,
   };
 }
 

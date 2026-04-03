@@ -3,7 +3,7 @@ import type { FixtureData } from "./fixture-generator.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import { planSample } from "../commands/sample.js";
 import { selectByCoverage, type TestCoverageInput } from "./coverage-guided.js";
-import { trainGBDT, predictGBDT, type TrainingRow } from "./gbdt.js";
+import { trainGBDT, predictGBDT, extractFeatures, FLAKER_FEATURE_NAMES, type TrainingRow } from "./gbdt.js";
 
 function generateSyntheticCoverage(fixture: FixtureData): TestCoverageInput[] {
   return fixture.tests.map((t) => {
@@ -215,18 +215,18 @@ export async function evaluateFixture(
       for (const tr of commit.testResults) {
         const agg = testAgg.get(tr.suite) ?? { runs: 0, fails: 0 };
         const flakyRate = agg.runs > 0 ? (agg.fails / agg.runs) * 100 : 0;
-
-        // Max co-failure rate for this test across changed files
-        let maxCoFailRate = 0;
-        for (const file of changedFiles) {
-          const entry = fileTestFailures.get(file)?.get(tr.suite);
-          if (entry && entry.co >= 2) {
-            maxCoFailRate = Math.max(maxCoFailRate, (entry.fail / entry.co) * 100);
-          }
-        }
+        const maxCoFailRate = computeMaxCoFailRate(fileTestFailures, changedFiles, tr.suite);
 
         trainingData.push({
-          features: [flakyRate, maxCoFailRate, agg.runs, agg.fails, 100, agg.fails > 0 ? 1 : 0, agg.runs <= 1 ? 1 : 0],
+          features: extractFeatures({
+            flaky_rate: flakyRate,
+            co_failure_boost: maxCoFailRate,
+            total_runs: agg.runs,
+            fail_count: agg.fails,
+            avg_duration_ms: 100,
+            previously_failed: agg.fails > 0,
+            is_new: agg.runs <= 1,
+          }),
           label: tr.status === "failed" ? 1 : 0,
         });
       }
@@ -236,7 +236,7 @@ export async function evaluateFixture(
     const model = trainGBDT(trainingData, {
       numTrees: 15,
       learningRate: 0.2,
-      featureNames: ["flaky_rate", "co_failure_boost", "total_runs", "fail_count", "avg_duration_ms", "previously_failed", "is_new"],
+      featureNames: FLAKER_FEATURE_NAMES,
     });
 
     // Evaluate on eval commits: rank tests by model score, select top N
@@ -252,14 +252,16 @@ export async function evaluateFixture(
       const scored = fixture.tests.map((t) => {
         const agg = testAgg.get(t.suite) ?? { runs: 0, fails: 0 };
         const flakyRate = agg.runs > 0 ? (agg.fails / agg.runs) * 100 : 0;
-        let maxCoFailRate = 0;
-        for (const file of changedFiles) {
-          const entry = fileTestFailures.get(file)?.get(t.suite);
-          if (entry && entry.co >= 2) {
-            maxCoFailRate = Math.max(maxCoFailRate, (entry.fail / entry.co) * 100);
-          }
-        }
-        const features = [flakyRate, maxCoFailRate, agg.runs, agg.fails, 100, agg.fails > 0 ? 1 : 0, agg.runs <= 1 ? 1 : 0];
+        const maxCoFailRate = computeMaxCoFailRate(fileTestFailures, changedFiles, t.suite);
+        const features = extractFeatures({
+          flaky_rate: flakyRate,
+          co_failure_boost: maxCoFailRate,
+          total_runs: agg.runs,
+          fail_count: agg.fails,
+          avg_duration_ms: 100,
+          previously_failed: agg.fails > 0,
+          is_new: agg.runs <= 1,
+        });
         return { suite: t.suite, score: predictGBDT(model, features) };
       });
 
@@ -300,4 +302,19 @@ export async function evaluateFixture(
   }
 
   return results;
+}
+
+function computeMaxCoFailRate(
+  fileTestFailures: Map<string, Map<string, { co: number; fail: number }>>,
+  changedFiles: string[],
+  suite: string,
+): number {
+  let max = 0;
+  for (const file of changedFiles) {
+    const entry = fileTestFailures.get(file)?.get(suite);
+    if (entry && entry.co >= 2) {
+      max = Math.max(max, (entry.fail / entry.co) * 100);
+    }
+  }
+  return max;
 }

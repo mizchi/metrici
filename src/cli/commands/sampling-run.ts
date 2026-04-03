@@ -17,6 +17,7 @@ export interface RecordSamplingRunFromSummaryOpts {
   commandKind: "sample" | "run";
   summary: SamplingSummary;
   tests: SamplingRunTestInput[];
+  holdoutTests?: SamplingRunTestInput[];
   durationMs?: number | null;
 }
 
@@ -41,15 +42,25 @@ export async function recordSamplingRunFromSummary(
     durationMs: opts.durationMs ?? null,
   });
 
-  await store.recordSamplingRunTests(
-    opts.tests.map((test, ordinal) => ({
-      samplingRunId,
-      ordinal,
-      suite: test.suite,
-      testName: test.testName ?? test.test_name ?? "",
-      taskId: test.taskId ?? test.task_id ?? null,
-      filter: test.filter ?? null,
-      testId: test.testId ?? test.test_id ?? null,
-    })),
-  );
+  const sampledRecords = opts.tests.map((test, ordinal) => ({
+    samplingRunId,
+    ordinal,
+    suite: test.suite,
+    testName: test.testName ?? test.test_name ?? "",
+    taskId: test.taskId ?? test.task_id ?? null,
+    filter: test.filter ?? null,
+    testId: test.testId ?? test.test_id ?? null,
+    isHoldout: false,
+  }));
+  const holdoutRecords = (opts.holdoutTests ?? []).map((test, i) => ({
+    samplingRunId,
+    ordinal: opts.tests.length + i,
+    suite: test.suite,
+    testName: test.testName ?? test.test_name ?? "",
+    taskId: test.taskId ?? test.task_id ?? null,
+    filter: test.filter ?? null,
+    testId: test.testId ?? test.test_id ?? null,
+    isHoldout: true,
+  }));
+  await store.recordSamplingRunTests([...sampledRecords, ...holdoutRecords]);
 }

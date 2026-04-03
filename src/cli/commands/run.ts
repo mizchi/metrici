@@ -1,5 +1,4 @@
 import type { MetricStore } from "../storage/types.js";
-import { createStableTestId } from "../identity.js";
 import {
   planSample,
   type SamplingSummary,
@@ -14,6 +13,10 @@ import {
   type RunnerAdapter,
   type TestId,
 } from "../runners/index.js";
+import {
+  createMetaKey,
+  buildListedTestIndex,
+} from "./test-key.js";
 
 export interface RunOpts {
   store: MetricStore;
@@ -35,51 +38,6 @@ export interface RunCommandResult extends ExecuteResult {
   sampledTests: TestId[];
 }
 
-function createListedTestKey(test: TestId): string {
-  return (
-    test.testId ??
-    createStableTestId({
-      suite: test.suite,
-      testName: test.testName,
-      taskId: test.taskId,
-      filter: test.filter,
-      variant: test.variant,
-    })
-  );
-}
-
-function createSampledTestKey(test: {
-  suite: string;
-  test_name: string;
-  task_id?: string | null;
-  filter?: string | null;
-  test_id?: string | null;
-}): string {
-  return (
-    test.test_id ??
-    createStableTestId({
-      suite: test.suite,
-      testName: test.test_name,
-      taskId: test.task_id,
-      filter: test.filter,
-    })
-  );
-}
-
-function buildListedTestIndex(listedTests: TestId[]): Map<string, TestId[]> {
-  const index = new Map<string, TestId[]>();
-  for (const test of listedTests) {
-    const key = createListedTestKey(test);
-    const existing = index.get(key);
-    if (existing) {
-      existing.push(test);
-    } else {
-      index.set(key, [test]);
-    }
-  }
-  return index;
-}
-
 function enrichSampledTests(
   sampled: Array<{
     suite: string;
@@ -92,7 +50,7 @@ function enrichSampledTests(
 ): TestId[] {
   const index = buildListedTestIndex(listedTests);
   return sampled.map((test) => {
-    const key = createSampledTestKey(test);
+    const key = createMetaKey(test);
     const enriched = index.get(key)?.shift();
     return (
       enriched ?? {

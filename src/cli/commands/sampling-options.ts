@@ -3,6 +3,7 @@ export const SAMPLING_MODES = [
   "weighted",
   "affected",
   "hybrid",
+  "gbdt",
 ] as const;
 
 export type SamplingMode = (typeof SAMPLING_MODES)[number];

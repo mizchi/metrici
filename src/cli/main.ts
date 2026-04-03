@@ -217,6 +217,29 @@ async function createConfiguredResolver(
   );
 }
 
+interface SamplingCliOpts {
+  strategy: string;
+  count?: string;
+  percentage?: string;
+  skipQuarantined?: boolean;
+  changed?: string;
+  coFailureDays?: string;
+  holdoutRatio?: string;
+  modelPath?: string;
+}
+
+function addSamplingOptions<T extends Command>(cmd: T): T {
+  return cmd
+    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt", "random")
+    .option("--count <n>", "Number of tests to sample")
+    .option("--percentage <n>", "Percentage of tests to sample")
+    .option("--skip-quarantined", "Exclude quarantined tests")
+    .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
+    .option("--co-failure-days <days>", "Co-failure analysis window in days (default: 90)")
+    .option("--holdout-ratio <ratio>", "Fraction of skipped tests to run as holdout (0-1, default: 0)")
+    .option("--model-path <path>", "Path to GBDT model JSON (default: .flaker/models/gbdt.json)") as T;
+}
+
 program
   .name("flaker")
   .description("Sample meaningful tests from CI and flaky history")
@@ -381,17 +404,12 @@ program
   });
 
 // --- sample ---
-program
-  .command("sample")
-  .description("Choose a smaller local test set")
-  .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid", "random")
-  .option("--count <n>", "Number of tests to sample")
-  .option("--percentage <n>", "Percentage of tests to sample")
-  .option("--skip-quarantined", "Exclude quarantined tests")
-  .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
-  .option("--co-failure-days <days>", "Co-failure analysis window in days (default: 90)")
-  .action(
-    async (opts: { strategy: string; count?: string; percentage?: string; skipQuarantined?: boolean; changed?: string; coFailureDays?: string }) => {
+addSamplingOptions(
+  program
+    .command("sample")
+    .description("Choose a smaller local test set"),
+).action(
+    async (opts: SamplingCliOpts) => {
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
@@ -423,12 +441,15 @@ program
           listedTests,
           coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : undefined,
           coFailureAlpha: loadTuningConfigSafe(config.storage.path).alpha,
+          holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : undefined,
+          modelPath: opts.modelPath,
         });
         await recordSamplingRunFromSummary(store, {
           commitSha: resolveCurrentCommitSha(process.cwd()),
           commandKind: "sample",
           summary: samplePlan.summary,
           tests: samplePlan.sampled,
+          holdoutTests: samplePlan.holdout,
         });
         console.log(formatSamplingSummary(samplePlan.summary, {
           ciPassWhenLocalPassRate: kpi.passSignal.rate,
@@ -439,6 +460,12 @@ program
         for (const t of samplePlan.sampled) {
           console.log(`${t.suite} > ${t.test_name}`);
         }
+        if (samplePlan.holdout.length > 0) {
+          console.log(`\n# Holdout tests (${samplePlan.holdout.length})`);
+          for (const t of samplePlan.holdout) {
+            console.log(`${t.suite} > ${t.test_name}`);
+          }
+        }
       } finally {
         await store.close();
       }
@@ -446,19 +473,14 @@ program
   );
 
 // --- run ---
-program
-  .command("run")
-  .description("Select tests and execute them locally")
-  .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid", "random")
-  .option("--count <n>", "Number of tests to run")
-  .option("--percentage <n>", "Percentage of tests to run")
-  .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
-  .option("--co-failure-days <days>", "Co-failure analysis window in days (default: 90)")
-  .option("--runner <runner>", "Runner type: direct or actrun", "direct")
-  .option("--retry", "Retry failed tests (actrun only)")
-  .option("--skip-quarantined", "Exclude quarantined tests")
-  .action(
-    async (opts: { strategy: string; count?: string; percentage?: string; changed?: string; coFailureDays?: string; runner: string; retry?: boolean; skipQuarantined?: boolean }) => {
+addSamplingOptions(
+  program
+    .command("run")
+    .description("Select tests and execute them locally")
+    .option("--runner <runner>", "Runner type: direct or actrun", "direct")
+    .option("--retry", "Retry failed tests (actrun only)"),
+).action(
+    async (opts: SamplingCliOpts & { runner: string; retry?: boolean }) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
       const store = new DuckDBStore(resolve(config.storage.path));
@@ -1275,6 +1297,37 @@ program
       await store.close();
     }
   });
+
+// --- train ---
+program
+  .command("train")
+  .description("Train a GBDT model from historical test results")
+  .option("--num-trees <n>", "Number of trees (default: 15)")
+  .option("--learning-rate <rate>", "Learning rate (default: 0.2)")
+  .option("--window-days <days>", "Training data window in days (default: 90)")
+  .option("--output <path>", "Output model path (default: .flaker/models/gbdt.json)")
+  .action(
+    async (opts: { numTrees?: string; learningRate?: string; windowDays?: string; output?: string }) => {
+      const config = loadConfig(process.cwd());
+      const store = new DuckDBStore(resolve(config.storage.path));
+      await store.initialize();
+
+      try {
+        const { trainModel, formatTrainResult } = await import("./commands/train.js");
+        const result = await trainModel({
+          store,
+          storagePath: config.storage.path,
+          numTrees: opts.numTrees ? parseInt(opts.numTrees, 10) : undefined,
+          learningRate: opts.learningRate ? parseFloat(opts.learningRate) : undefined,
+          windowDays: opts.windowDays ? parseInt(opts.windowDays, 10) : undefined,
+          outputPath: opts.output,
+        });
+        console.log(formatTrainResult(result));
+      } finally {
+        await store.close();
+      }
+    },
+  );
 
 // --- context ---
 program

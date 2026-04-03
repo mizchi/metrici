@@ -1,20 +1,27 @@
 import type { MetricStore } from "../storage/types.js";
-import type {
-  MetriciCore,
-  SamplingHistoryRowInput,
-  SamplingListedTestInput,
-  StableVariantEntryInput,
-  TestMeta,
-} from "../core/loader.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import type { TestId } from "../runners/types.js";
 import type { SamplingMode } from "./sampling-options.js";
-import { loadCore } from "../core/loader.js";
-import { createStableTestId } from "../identity.js";
+import {
+  loadCore,
+  type MetriciCore,
+  type SamplingHistoryRowInput,
+  type SamplingListedTestInput,
+  type StableVariantEntryInput,
+  type TestMeta,
+} from "../core/loader.js";
 import {
   isManifestQuarantined,
   type QuarantineManifestEntry,
 } from "../quarantine-manifest.js";
+import { extractFeatures, type GBDTModel } from "../eval/gbdt.js";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  createListedTestKey,
+  createMetaKey,
+  buildListedTestIndex,
+} from "./test-key.js";
 
 export interface SampleOpts {
   store: MetricStore;
@@ -29,6 +36,8 @@ export interface SampleOpts {
   listedTests?: TestId[];
   coFailureDays?: number;
   coFailureAlpha?: number;
+  holdoutRatio?: number;
+  modelPath?: string;
 }
 
 export interface SamplingSummary {
@@ -39,6 +48,7 @@ export interface SamplingSummary {
   changedFiles: string[] | null;
   candidateCount: number;
   selectedCount: number;
+  holdoutCount: number;
   sampleRatio: number | null;
   estimatedSavedTests: number;
   estimatedSavedMinutes: number | null;
@@ -51,6 +61,7 @@ export interface SamplingConfidenceEstimate {
 
 export interface SamplePlan {
   sampled: TestMeta[];
+  holdout: TestMeta[];
   allTests: TestMeta[];
   summary: SamplingSummary;
 }
@@ -66,45 +77,6 @@ function toCoreVariantEntries(
     .map(([key, value]) => ({ key, value: String(value) }))
     .sort((a, b) => a.key.localeCompare(b.key));
   return entries.length > 0 ? entries : null;
-}
-
-function createListedTestKey(test: TestId): string {
-  return (
-    test.testId ??
-    createStableTestId({
-      suite: test.suite,
-      testName: test.testName,
-      taskId: test.taskId,
-      filter: test.filter,
-      variant: test.variant,
-    })
-  );
-}
-
-function createMetaKey(test: TestMeta): string {
-  return (
-    test.test_id ??
-    createStableTestId({
-      suite: test.suite,
-      testName: test.test_name,
-      taskId: test.task_id,
-      filter: test.filter,
-    })
-  );
-}
-
-function buildListedTestIndex(listedTests: TestId[]): Map<string, TestId[]> {
-  const index = new Map<string, TestId[]>();
-  for (const test of listedTests) {
-    const key = createListedTestKey(test);
-    const existing = index.get(key);
-    if (existing) {
-      existing.push(test);
-    } else {
-      index.set(key, [test]);
-    }
-  }
-  return index;
 }
 
 function filterMetaToListedTests(
@@ -143,104 +115,142 @@ export async function planSample(opts: SampleOpts): Promise<SamplePlan> {
   const core = await loadCore();
   const listedTests = opts.listedTests ?? [];
   const meta = await buildSamplingMeta(opts.store, listedTests, core);
-  // Ensure co_failure_boost is always present (MoonBit may not include it until rebuilt)
+
   let allTests = meta.tests.map((t) => ({
     ...t,
     co_failure_boost: t.co_failure_boost ?? 0,
   }));
 
-  // Apply co-failure boosts if changedFiles are provided
-  if (opts.changedFiles && opts.changedFiles.length > 0) {
-    const boosts = await opts.store.getCoFailureBoosts(
-      opts.changedFiles,
-      { windowDays: opts.coFailureDays ?? 90 },
-    );
-    if (boosts.size > 0) {
-      allTests = allTests.map((test) => {
-        const key = test.test_id ?? createStableTestId({
-          suite: test.suite,
-          testName: test.test_name,
-          taskId: test.task_id,
-          filter: test.filter,
-        });
-        const rawBoost = boosts.get(key) ?? 0;
-        const alpha = opts.coFailureAlpha ?? 1.0;
-        const boost = rawBoost * alpha;
-        return boost > 0 ? { ...test, co_failure_boost: boost } : test;
-      });
-    }
-  }
+  allTests = await applyCoFailureBoosts(allTests, opts);
 
   if (opts.skipQuarantined) {
-    const quarantined = await opts.store.queryQuarantined();
-    const qSet = new Set(quarantined.map((q) => q.testId));
-    const manifestEntries = opts.quarantineManifestEntries ?? [];
-    const listedTestIndex = buildListedTestIndex(listedTests);
-    allTests = allTests.filter((test) => {
-      const key = createMetaKey(test);
-      const enriched = listedTestIndex.get(key)?.[0];
-
-      if (qSet.has(key)) {
-        return false;
-      }
-
-      return !isManifestQuarantined(manifestEntries, {
-        suite: enriched?.suite ?? test.suite,
-        testName: enriched?.testName ?? test.test_name,
-        taskId: enriched?.taskId ?? test.task_id ?? undefined,
-      });
-    });
+    allTests = await filterQuarantinedTests(
+      allTests, opts.store, listedTests, opts.quarantineManifestEntries ?? [],
+    );
   }
 
-  let count: number;
-  if (opts.percentage != null) {
-    count = Math.round((opts.percentage / 100) * allTests.length);
-  } else {
-    count = opts.count ?? allTests.length;
-  }
-
+  const count = resolveCount(opts, allTests.length);
   const seed = opts.seed ?? Date.now();
-  let sampled: TestMeta[];
+  const { sampled, effectiveMode } = await selectByStrategy(
+    allTests, count, seed, opts, core,
+  );
 
-  if (opts.mode === "affected") {
-    if (!opts.resolver || !opts.changedFiles) {
-      throw new Error("affected mode requires resolver and changedFiles");
-    }
-    const allSuites = [...new Set(allTests.map((test) => test.suite))];
-    const affectedSuites = await opts.resolver.resolve(
-      opts.changedFiles,
-      allSuites,
-    );
-    sampled = allTests.filter((test) => affectedSuites.includes(test.suite));
-  } else if (opts.mode === "hybrid") {
-    if (!opts.resolver || !opts.changedFiles) {
-      throw new Error("hybrid mode requires resolver and changedFiles");
-    }
-    const allSuites = [...new Set(allTests.map((test) => test.suite))];
-    const affectedSuites = await opts.resolver.resolve(
-      opts.changedFiles,
-      allSuites,
-    );
-    sampled = core.sampleHybrid(allTests, affectedSuites, count, seed);
-  } else if (opts.mode === "weighted") {
-    sampled = core.sampleWeighted(allTests, count, seed);
-  } else {
-    sampled = core.sampleRandom(allTests, count, seed);
-  }
+  const holdout = selectHoldout(allTests, sampled, opts.holdoutRatio ?? 0, seed);
 
   return {
     sampled,
+    holdout,
     allTests,
     summary: buildSamplingSummary({
-      strategy: opts.mode,
+      strategy: effectiveMode,
       requestedCount: opts.count ?? null,
       requestedPercentage: opts.percentage ?? null,
       seed,
       changedFiles: opts.changedFiles ?? null,
       allTests,
       sampled,
+      holdoutCount: holdout.length,
       fallbackReason: meta.fallbackReason,
     }),
+  };
+}
+
+async function applyCoFailureBoosts(
+  tests: TestMeta[],
+  opts: SampleOpts,
+): Promise<TestMeta[]> {
+  if (!opts.changedFiles?.length) return tests;
+
+  const boosts = await opts.store.getCoFailureBoosts(
+    opts.changedFiles,
+    { windowDays: opts.coFailureDays ?? 90 },
+  );
+  if (boosts.size === 0) return tests;
+
+  const alpha = opts.coFailureAlpha ?? 1.0;
+  return tests.map((test) => {
+    const boost = (boosts.get(createMetaKey(test)) ?? 0) * alpha;
+    return boost > 0 ? { ...test, co_failure_boost: boost } : test;
+  });
+}
+
+async function filterQuarantinedTests(
+  tests: TestMeta[],
+  store: MetricStore,
+  listedTests: TestId[],
+  manifestEntries: QuarantineManifestEntry[],
+): Promise<TestMeta[]> {
+  const quarantined = await store.queryQuarantined();
+  const qSet = new Set(quarantined.map((q) => q.testId));
+  const listedTestIndex = buildListedTestIndex(listedTests);
+  return tests.filter((test) => {
+    const key = createMetaKey(test);
+    if (qSet.has(key)) return false;
+    const enriched = listedTestIndex.get(key)?.[0];
+    return !isManifestQuarantined(manifestEntries, {
+      suite: enriched?.suite ?? test.suite,
+      testName: enriched?.testName ?? test.test_name,
+      taskId: enriched?.taskId ?? test.task_id ?? undefined,
+    });
+  });
+}
+
+function resolveCount(opts: SampleOpts, totalTests: number): number {
+  if (opts.percentage != null) {
+    return Math.round((opts.percentage / 100) * totalTests);
+  }
+  return opts.count ?? totalTests;
+}
+
+async function selectByStrategy(
+  allTests: TestMeta[],
+  count: number,
+  seed: number,
+  opts: SampleOpts,
+  core: MetriciCore,
+): Promise<{ sampled: TestMeta[]; effectiveMode: SamplingMode }> {
+  let effectiveMode: SamplingMode = opts.mode;
+
+  if (opts.mode === "affected" || opts.mode === "hybrid") {
+    if (!opts.resolver || !opts.changedFiles) {
+      throw new Error(`${opts.mode} mode requires resolver and changedFiles`);
+    }
+    const allSuites = [...new Set(allTests.map((t) => t.suite))];
+    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
+    if (opts.mode === "affected") {
+      return {
+        sampled: allTests.filter((t) => affectedSuites.includes(t.suite)),
+        effectiveMode,
+      };
+    }
+    return {
+      sampled: core.sampleHybrid(allTests, affectedSuites, count, seed),
+      effectiveMode,
+    };
+  }
+
+  if (opts.mode === "gbdt") {
+    const sampled = sampleByGBDT(allTests, count, core, opts.modelPath);
+    if (sampled.length > 0 || allTests.length === 0) {
+      return { sampled, effectiveMode };
+    }
+    effectiveMode = "weighted";
+    return {
+      sampled: core.sampleWeighted(allTests, count, seed),
+      effectiveMode,
+    };
+  }
+
+  if (opts.mode === "weighted") {
+    return {
+      sampled: core.sampleWeighted(allTests, count, seed),
+      effectiveMode,
+    };
+  }
+
+  return {
+    sampled: core.sampleRandom(allTests, count, seed),
+    effectiveMode,
   };
 }
 
@@ -252,6 +262,7 @@ interface BuildSamplingSummaryOpts {
   changedFiles: string[] | null;
   allTests: TestMeta[];
   sampled: TestMeta[];
+  holdoutCount: number;
   fallbackReason: string | null;
 }
 
@@ -281,6 +292,7 @@ function buildSamplingSummary(opts: BuildSamplingSummaryOpts): SamplingSummary {
     changedFiles: opts.changedFiles,
     candidateCount,
     selectedCount,
+    holdoutCount: opts.holdoutCount,
     sampleRatio: candidateCount > 0
       ? roundMetric((selectedCount / candidateCount) * 100)
       : null,
@@ -301,6 +313,7 @@ export function formatSamplingSummary(
     `  Selected tests:           ${summary.selectedCount} / ${summary.candidateCount}${summary.sampleRatio != null ? ` (${summary.sampleRatio}%)` : ""}`,
     `  Estimated saved tests:    ${summary.estimatedSavedTests}`,
     `  Estimated saved minutes:  ${summary.estimatedSavedMinutes ?? "N/A"}`,
+    `  Holdout tests:            ${summary.holdoutCount > 0 ? summary.holdoutCount : "disabled"}`,
     `  CI pass when local pass:  ${confidence?.ciPassWhenLocalPassRate != null ? `${confidence.ciPassWhenLocalPassRate}%` : "N/A"}`,
   ];
   if (summary.fallbackReason) {
@@ -375,4 +388,63 @@ async function buildSamplingMeta(
         ? "cold-start-listed-tests"
         : null,
   };
+}
+
+function selectHoldout(
+  allTests: TestMeta[],
+  sampled: TestMeta[],
+  holdoutRatio: number,
+  seed: number,
+): TestMeta[] {
+  if (holdoutRatio <= 0 || holdoutRatio > 1) {
+    return [];
+  }
+  const sampledKeys = new Set(sampled.map(createMetaKey));
+  const skipped = allTests.filter((t) => !sampledKeys.has(createMetaKey(t)));
+  if (skipped.length === 0) {
+    return [];
+  }
+  const holdoutCount = Math.max(1, Math.round(skipped.length * holdoutRatio));
+
+  // Simple Fisher-Yates with LCG
+  const arr = [...skipped];
+  let state = seed >>> 0;
+  for (let i = arr.length - 1; i > 0; i--) {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    const j = state % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, holdoutCount);
+}
+
+function loadGBDTModel(modelPath?: string): GBDTModel | null {
+  if (modelPath && existsSync(modelPath)) {
+    return JSON.parse(readFileSync(modelPath, "utf-8")) as GBDTModel;
+  }
+  // Try default location
+  const defaultPath = resolve(".flaker", "models", "gbdt.json");
+  if (existsSync(defaultPath)) {
+    return JSON.parse(readFileSync(defaultPath, "utf-8")) as GBDTModel;
+  }
+  return null;
+}
+
+function sampleByGBDT(
+  allTests: TestMeta[],
+  count: number,
+  core: MetriciCore,
+  modelPath?: string,
+): TestMeta[] {
+  const model = loadGBDTModel(modelPath);
+  if (!model) {
+    return []; // signal to caller to fall back
+  }
+
+  const scored = allTests.map((test) => {
+    const features = extractFeatures(test);
+    const score = core.predictGBDT(model, features);
+    return { test, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, count).map((s) => s.test);
 }

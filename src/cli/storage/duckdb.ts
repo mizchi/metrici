@@ -191,9 +191,10 @@ export class DuckDBStore implements MetricStore {
            task_id,
            suite,
            test_name,
-           filter_text
+           filter_text,
+           is_holdout
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           record.samplingRunId,
           record.ordinal,
@@ -202,6 +203,7 @@ export class DuckDBStore implements MetricStore {
           record.suite,
           record.testName,
           record.filter ?? null,
+          record.isHoldout ?? false,
         ],
       );
     }
