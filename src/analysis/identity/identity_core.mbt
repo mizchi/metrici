@@ -52,7 +52,17 @@ pub fn create_stable_test_id(input : @types.StableTestIdentityInput) -> String {
     None => "null"
   }
   let variant_json = variant_json_text(variant)
-  let result = "{\"taskId\":" + quote_json(task_id) + ",\"suite\":" + quote_json(input.suite) + ",\"testName\":" + quote_json(input.test_name) + ",\"filter\":" + filter_json + ",\"variant\":" + variant_json + "}"
+  let result = "{\"taskId\":" +
+    quote_json(task_id) +
+    ",\"suite\":" +
+    quote_json(input.suite) +
+    ",\"testName\":" +
+    quote_json(input.test_name) +
+    ",\"filter\":" +
+    filter_json +
+    ",\"variant\":" +
+    variant_json +
+    "}"
   result
 }
 
@@ -69,16 +79,14 @@ pub fn resolve_test_identity(
   let test_id = match input.test_id {
     Some(test_id) => test_id
     None =>
-      create_stable_test_id(
-        @types.StableTestIdentityInput::{
-          suite: input.suite,
-          test_name: input.test_name,
-          task_id: Some(task_id),
-          filter,
-          variant,
-          test_id: None,
-        },
-      )
+      create_stable_test_id(@types.StableTestIdentityInput::{
+        suite: input.suite,
+        test_name: input.test_name,
+        task_id: Some(task_id),
+        filter,
+        variant,
+        test_id: None,
+      })
   }
 
   @types.ResolvedStableTestIdentityOutput::{

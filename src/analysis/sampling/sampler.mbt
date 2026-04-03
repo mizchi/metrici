@@ -103,7 +103,7 @@ pub fn sample_hybrid(
   meta : Array[@types.TestMeta],
   affected_suites~ : Array[String],
   count~ : Int,
-  seed~ : UInt64
+  seed~ : UInt64,
 ) -> Array[@types.TestMeta] {
   let actual_count = clamp_count(count, meta.length())
   if actual_count == 0 {

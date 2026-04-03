@@ -17,7 +17,7 @@ fn round_percent(numerator : Int, denominator : Int) -> Double {
   if denominator <= 0 {
     return 0.0
   }
-  ((numerator.to_double() * 100.0 / denominator.to_double()) * 100.0).round() /
+  (numerator.to_double() * 100.0 / denominator.to_double() * 100.0).round() /
   100.0
 }
 
@@ -65,16 +65,14 @@ fn resolve_listed_identity(
 
 ///|
 fn is_default_history_identity(row : @types.SamplingHistoryRowInput) -> Bool {
-  let default_test_id = @identity_core.create_stable_test_id(
-    @types.StableTestIdentityInput::{
-      suite: row.suite,
-      test_name: row.test_name,
-      task_id: None,
-      filter: None,
-      variant: None,
-      test_id: None,
-    },
-  )
+  let default_test_id = @identity_core.create_stable_test_id(@types.StableTestIdentityInput::{
+    suite: row.suite,
+    test_name: row.test_name,
+    task_id: None,
+    filter: None,
+    variant: None,
+    test_id: None,
+  })
   let has_default_task = match row.task_id {
     None => true
     Some(task_id) => task_id == row.suite
@@ -94,9 +92,8 @@ fn resolve_history_identity(
   if is_default_history_identity(row) {
     let key = suite_test_key(row.suite, row.test_name)
     match listed_by_key.get(key) {
-      Some(candidates) if candidates.length() == 1 => {
+      Some(candidates) if candidates.length() == 1 =>
         return resolve_listed_identity(candidates[0])
-      }
       _ => ()
     }
   }
@@ -185,7 +182,8 @@ pub fn build_sampling_meta(
     if row.status == "failed" {
       acc.fail_count += 1
     }
-    if row.status == "failed" || row.status == "flaky" ||
+    if row.status == "failed" ||
+      row.status == "flaky" ||
       (row.retry_count > 0 && row.status == "passed") {
       acc.failure_signals += 1
     }
@@ -203,9 +201,7 @@ pub fn build_sampling_meta(
   }
 
   let result : Array[@types.TestMeta] = []
-  acc_by_id.each(fn(_, acc) {
-    result.push(to_test_meta(acc))
-  })
+  acc_by_id.each(fn(_, acc) { result.push(to_test_meta(acc)) })
   result.sort_by(compare_meta)
   result
 }

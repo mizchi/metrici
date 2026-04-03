@@ -35,7 +35,7 @@ fn to_rate(numerator : Int, denominator : Int) -> Double? {
   if denominator == 0 {
     return None
   }
-  Some(round_metric((numerator.to_double() * 100.0) / denominator.to_double()))
+  Some(round_metric(numerator.to_double() * 100.0 / denominator.to_double()))
 }
 
 ///|
@@ -60,7 +60,7 @@ fn average_ratio(numerators : Array[Int], denominators : Array[Int]) -> Double? 
   for i in 0..<numerators.length() {
     let denominator = denominators[i]
     if denominator > 0 {
-      total += (numerators[i].to_double() / denominator.to_double()) * 100.0
+      total += numerators[i].to_double() / denominator.to_double() * 100.0
       count += 1
     }
   }
@@ -202,7 +202,9 @@ pub fn build_sampling_kpi(
     },
     avg_ci_test_count: average(ci_test_counts),
     avg_sample_ratio: average_ratio(sample_sizes, ci_test_counts),
-    avg_saved_minutes: average_duration_delta_minutes(local_durations, ci_durations),
+    avg_saved_minutes: average_duration_delta_minutes(
+      local_durations, ci_durations,
+    ),
     fallback_runs,
     fallback_rate: to_rate(fallback_runs, local_order.length()),
     pass_signal: @types.SamplingKpiSignalOutput::{

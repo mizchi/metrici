@@ -52,14 +52,20 @@ pub fn run_config_check(
   discovered_specs : Array[String],
   task_definitions : Array[@types.ConfigCheckTaskDefinitionInput],
 ) -> @types.ConfigCheckCoreOutput {
-  let ownership_index : Map[String, Map[String, @types.ConfigOwnershipClaimOutput]] = {}
+  let ownership_index : Map[
+    String,
+    Map[String, @types.ConfigOwnershipClaimOutput],
+  ] = {}
   let ownership_order : Array[String] = []
   let task_specs : Map[String, Map[String, Bool]] = {}
   let task_filters : Map[String, Map[String, Bool]] = {}
   let task_test_counts : Map[String, Int] = {}
   let task_ids_seen : Map[String, Bool] = {}
   let task_ids : Array[String] = []
-  let task_definitions_by_id : Map[String, @types.ConfigCheckTaskDefinitionInput] = {}
+  let task_definitions_by_id : Map[
+    String,
+    @types.ConfigCheckTaskDefinitionInput,
+  ] = {}
 
   for task in task_definitions {
     task_definitions_by_id.set(task.task_id, task)
@@ -84,10 +90,11 @@ pub fn run_config_check(
       Some(existing) => existing.test_count + 1
       None => 1
     }
-    claims_by_key.set(
-      key,
-      @types.ConfigOwnershipClaimOutput::{ task_id, filter, test_count: next_count },
-    )
+    claims_by_key.set(key, @types.ConfigOwnershipClaimOutput::{
+      task_id,
+      filter,
+      test_count: next_count,
+    })
 
     let specs = task_specs.get_or_init(task_id, fn() { {} })
     specs.set(spec, true)
@@ -118,9 +125,7 @@ pub fn run_config_check(
   for spec in ownership_order {
     managed_specs.set(spec, true)
     let owners : Array[@types.ConfigOwnershipClaimOutput] = []
-    ownership_index[spec].each(fn(_, claim) {
-      owners.push(claim)
-    })
+    ownership_index[spec].each(fn(_, claim) { owners.push(claim) })
     owners.sort_by(fn(a, b) {
       let by_task_id = a.task_id.lexical_compare(b.task_id)
       if by_task_id != 0 {
@@ -134,12 +139,14 @@ pub fn run_config_check(
       split_count.value += 1
     }
     if kind == "duplicate" {
-      let owner_detail = owners.map(fn(owner) {
-        match owner.filter {
-          Some(filter) => "\{owner.task_id} (\{filter})"
-          None => owner.task_id
-        }
-      }).join(", ")
+      let owner_detail = owners
+        .map(fn(owner) {
+          match owner.filter {
+            Some(filter) => "\{owner.task_id} (\{filter})"
+            None => owner.task_id
+          }
+        })
+        .join(", ")
       errors.push(@types.ConfigCheckIssueOutput::{
         code: "duplicate-ownership",
         spec,

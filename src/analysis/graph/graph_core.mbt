@@ -115,11 +115,10 @@ fn visit_topological(
   }
   visited.set(node_id, true)
   match find_node(graph, node_id) {
-    Some(node) => {
+    Some(node) =>
       for dep in node.dependencies {
         visit_topological(graph, dep, visited, result)
       }
-    }
     None => ()
   }
   result.push(node_id)
@@ -143,11 +142,10 @@ pub fn get_affected_test_patterns(
   let patterns : Array[String] = []
   for node_id in affected_ids {
     match find_node(graph, node_id) {
-      Some(node) => {
+      Some(node) =>
         for pattern in node.test_patterns {
           patterns.push(pattern)
         }
-      }
       None => ()
     }
   }

@@ -21,20 +21,12 @@ priv struct ScopeCountsAcc {
 
 ///|
 fn build_mode_counts() -> ModeCountsAcc {
-  ModeCountsAcc::{
-    skip: 0,
-    allow_flaky: 0,
-    allow_failure: 0,
-  }
+  ModeCountsAcc::{ skip: 0, allow_flaky: 0, allow_failure: 0 }
 }
 
 ///|
 fn build_scope_counts() -> ScopeCountsAcc {
-  ScopeCountsAcc::{
-    environment: 0,
-    flaky: 0,
-    expected_failure: 0,
-  }
+  ScopeCountsAcc::{ environment: 0, flaky: 0, expected_failure: 0 }
 }
 
 ///|
@@ -71,7 +63,10 @@ fn days_in_month(year : Int, month : Int) -> Int {
 
 ///|
 fn parse_date_only(value : String) -> DateOnly? {
-  guard (try? @string.Regex("^([[:digit:]]{4})-([[:digit:]]{2})-([[:digit:]]{2})$")) is Ok(regex) else {
+  guard (try? @string.Regex(
+      "^([[:digit:]]{4})-([[:digit:]]{2})-([[:digit:]]{2})$",
+    ))
+    is Ok(regex) else {
     return None
   }
   guard regex.execute(value) is Some(m) else { return None }
@@ -241,121 +236,137 @@ pub fn summarize_quarantine(
     }
 
     if seen_ids.contains(entry.id) {
-      errors.push(create_issue(
-        "error",
-        "duplicate-quarantine-id",
-        "Duplicate quarantine id: \{entry.id}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "duplicate-quarantine-id",
+          "Duplicate quarantine id: \{entry.id}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     } else {
       seen_ids.set(entry.id, true)
     }
 
     let task = task_by_id.get(entry.task_id)
     if task is None {
-      errors.push(create_issue(
-        "error",
-        "unknown-task",
-        "Quarantine entry references unknown task: \{entry.task_id}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "unknown-task",
+          "Quarantine entry references unknown task: \{entry.task_id}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     }
 
     if !existing_specs_set.contains(entry.spec) {
-      errors.push(create_issue(
-        "error",
-        "missing-spec",
-        "Quarantine entry references missing spec: \{entry.spec}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "missing-spec",
+          "Quarantine entry references missing spec: \{entry.spec}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     } else {
       match task {
-        Some(task) => {
+        Some(task) =>
           if !task.specs.contains(entry.spec) {
-            errors.push(create_issue(
-              "error",
-              "task-does-not-own-spec",
-              "Task \{entry.task_id} does not own spec \{entry.spec}",
-              task_id=Some(entry.task_id),
-              spec=Some(entry.spec),
-            ))
+            errors.push(
+              create_issue(
+                "error",
+                "task-does-not-own-spec",
+                "Task \{entry.task_id} does not own spec \{entry.spec}",
+                task_id=Some(entry.task_id),
+                spec=Some(entry.spec),
+              ),
+            )
           }
-        }
         None => ()
       }
     }
 
     if !is_valid_title_pattern(entry.title_pattern) {
-      errors.push(create_issue(
-        "error",
-        "invalid-title-pattern",
-        "Invalid title pattern for quarantine \{entry.id}: \{entry.title_pattern}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "invalid-title-pattern",
+          "Invalid title pattern for quarantine \{entry.id}: \{entry.title_pattern}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     }
 
     let introduced_at = parse_date_only(entry.introduced_at)
     if introduced_at is None {
-      errors.push(create_issue(
-        "error",
-        "invalid-introduced-at",
-        "Invalid introducedAt for quarantine \{entry.id}: \{entry.introduced_at}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "invalid-introduced-at",
+          "Invalid introducedAt for quarantine \{entry.id}: \{entry.introduced_at}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     }
 
     let expires_at = parse_date_only(entry.expires_at)
     if expires_at is None {
-      errors.push(create_issue(
-        "error",
-        "invalid-expires-at",
-        "Invalid expiresAt for quarantine \{entry.id}: \{entry.expires_at}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "invalid-expires-at",
+          "Invalid expiresAt for quarantine \{entry.id}: \{entry.expires_at}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     }
 
     match (introduced_at, expires_at) {
-      (Some(introduced), Some(expires)) => {
+      (Some(introduced), Some(expires)) =>
         if days_from_civil(introduced) > days_from_civil(expires) {
-          errors.push(create_issue(
-            "error",
-            "invalid-expiry-range",
-            "introducedAt must be on or before expiresAt for quarantine \{entry.id}",
-            task_id=Some(entry.task_id),
-            spec=Some(entry.spec),
-          ))
+          errors.push(
+            create_issue(
+              "error",
+              "invalid-expiry-range",
+              "introducedAt must be on or before expiresAt for quarantine \{entry.id}",
+              task_id=Some(entry.task_id),
+              spec=Some(entry.spec),
+            ),
+          )
         }
-      }
       _ => ()
     }
 
     let (expiry_status, days_until_expiry) = classify_expiry(
-      now,
-      expires_at,
-      expires_soon_days,
+      now, expires_at, expires_soon_days,
     )
     if expiry_status == "expired" {
-      errors.push(create_issue(
-        "error",
-        "expired-quarantine",
-        "Quarantine \{entry.id} expired on \{entry.expires_at}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      errors.push(
+        create_issue(
+          "error",
+          "expired-quarantine",
+          "Quarantine \{entry.id} expired on \{entry.expires_at}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     } else if expiry_status == "expires-soon" {
-      warnings.push(create_issue(
-        "warning",
-        "expires-soon",
-        "Quarantine \{entry.id} expires on \{entry.expires_at}",
-        task_id=Some(entry.task_id),
-        spec=Some(entry.spec),
-      ))
+      warnings.push(
+        create_issue(
+          "warning",
+          "expires-soon",
+          "Quarantine \{entry.id} expires on \{entry.expires_at}",
+          task_id=Some(entry.task_id),
+          spec=Some(entry.spec),
+        ),
+      )
     }
 
     resolved_entries.push(@types.ResolvedQuarantineEntryOutput::{

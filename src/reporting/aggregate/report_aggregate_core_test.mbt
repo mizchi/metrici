@@ -43,33 +43,27 @@ test "aggregate_report combines shard totals and unstable buckets" {
     },
   ])
 
-  assert_eq(
-    result.totals,
-    @types.ReportTotalsInput::{
-      total: 3,
-      passed: 1,
-      failed: 1,
-      flaky: 1,
-      skipped: 0,
-      retries: 1,
-      duration_ms: 60,
-    },
-  )
+  assert_eq(result.totals, @types.ReportTotalsInput::{
+    total: 3,
+    passed: 1,
+    failed: 1,
+    flaky: 1,
+    skipped: 0,
+    retries: 1,
+    duration_ms: 60,
+  })
   assert_eq(result.shard_count, 2)
   assert_eq(result.unstable_count, 2)
-  assert_eq(
-    result.unstable,
-    [
-      @types.ReportAggregateUnstableBuckets::{
-        test_id: "card",
-        shard_ids: ["shard-1", "shard-2"],
-        statuses: ["failed", "flaky"],
-      },
-      @types.ReportAggregateUnstableBuckets::{
-        test_id: "footer",
-        shard_ids: ["shard-1"],
-        statuses: ["failed"],
-      },
-    ],
-  )
+  assert_eq(result.unstable, [
+    @types.ReportAggregateUnstableBuckets::{
+      test_id: "card",
+      shard_ids: ["shard-1", "shard-2"],
+      statuses: ["failed", "flaky"],
+    },
+    @types.ReportAggregateUnstableBuckets::{
+      test_id: "footer",
+      shard_ids: ["shard-1"],
+      statuses: ["failed"],
+    },
+  ])
 }

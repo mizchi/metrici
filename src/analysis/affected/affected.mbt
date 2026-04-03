@@ -14,7 +14,9 @@ pub fn resolve_affected(
 
   // Get task IDs that directly match changed paths via srcs/outs patterns
   let normalized_changed_paths = changed_paths.map(normalize_path)
-  let targets = @wf.entry_targets_for_changed_paths(ir, normalized_changed_paths)
+  let targets = @wf.entry_targets_for_changed_paths(
+    ir, normalized_changed_paths,
+  )
 
   // Build task-level graph nodes from task needs for expansion
   let task_nodes : Array[@wf.FlowNode] = []
@@ -36,6 +38,7 @@ pub fn resolve_affected(
   result
 }
 
+///|
 fn normalize_path(path : String) -> String {
   path.replace_all(old="\\", new="/")
 }

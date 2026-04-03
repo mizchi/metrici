@@ -1,6 +1,6 @@
 ///|
 fn find_index_of(values : Array[String], target : String) -> Int {
-  match values.find_index(fn(value) { value == target }) {
+  match values.search_by(fn(value) { value == target }) {
     Some(index) => index
     None => -1
   }
@@ -31,10 +31,9 @@ fn make_graph() -> @types.DependencyGraphInput {
 
 ///|
 test "find_affected_nodes expands transitive dependents" {
-  let affected = find_affected_nodes(
-    make_graph(),
-    ["packages/core/src/index.ts"],
-  )
+  let affected = find_affected_nodes(make_graph(), [
+    "packages/core/src/index.ts",
+  ])
   assert_true(affected.contains("core"))
   assert_true(affected.contains("app"))
 }
@@ -48,8 +47,5 @@ test "topological_sort keeps dependencies before dependents" {
 ///|
 test "get_affected_test_patterns preserves requested order" {
   let patterns = get_affected_test_patterns(make_graph(), ["app", "core"])
-  assert_eq(
-    patterns,
-    ["packages/app/tests/**", "packages/core/tests/**"],
-  )
+  assert_eq(patterns, ["packages/app/tests/**", "packages/core/tests/**"])
 }

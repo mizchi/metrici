@@ -143,11 +143,7 @@ pub fn build_affected_report(
       filter: selection.filter,
     }
     let acc = direct_by_key.get_or_init(target_key(target), fn() {
-      DirectSelectionAcc::{
-        target,
-        matched_paths: [],
-        match_reasons: [],
-      }
+      DirectSelectionAcc::{ target, matched_paths: [], match_reasons: [] }
     })
     for matched_path in selection.matched_paths {
       add_unique(acc.matched_paths, matched_path)

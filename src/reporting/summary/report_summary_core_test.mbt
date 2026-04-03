@@ -31,46 +31,40 @@ test "summarize_report reduces totals, file totals, and unstable ids" {
     },
   ])
 
-  assert_eq(
-    result.totals,
-    @types.ReportTotalsInput::{
-      total: 4,
-      passed: 1,
-      failed: 1,
-      flaky: 1,
-      skipped: 1,
-      retries: 1,
-      duration_ms: 65,
+  assert_eq(result.totals, @types.ReportTotalsInput::{
+    total: 4,
+    passed: 1,
+    failed: 1,
+    flaky: 1,
+    skipped: 1,
+    retries: 1,
+    duration_ms: 65,
+  })
+  assert_eq(result.file_totals, [
+    @types.ReportFileTotalsOutput::{
+      suite: "tests/a.spec.ts",
+      totals: @types.ReportTotalsInput::{
+        total: 2,
+        passed: 1,
+        failed: 0,
+        flaky: 0,
+        skipped: 1,
+        retries: 0,
+        duration_ms: 15,
+      },
     },
-  )
-  assert_eq(
-    result.file_totals,
-    [
-      @types.ReportFileTotalsOutput::{
-        suite: "tests/a.spec.ts",
-        totals: @types.ReportTotalsInput::{
-          total: 2,
-          passed: 1,
-          failed: 0,
-          flaky: 0,
-          skipped: 1,
-          retries: 0,
-          duration_ms: 15,
-        },
+    @types.ReportFileTotalsOutput::{
+      suite: "tests/b.spec.ts",
+      totals: @types.ReportTotalsInput::{
+        total: 2,
+        passed: 0,
+        failed: 1,
+        flaky: 1,
+        skipped: 0,
+        retries: 1,
+        duration_ms: 50,
       },
-      @types.ReportFileTotalsOutput::{
-        suite: "tests/b.spec.ts",
-        totals: @types.ReportTotalsInput::{
-          total: 2,
-          passed: 0,
-          failed: 1,
-          flaky: 1,
-          skipped: 0,
-          retries: 1,
-          duration_ms: 50,
-        },
-      },
-    ],
-  )
+    },
+  ])
   assert_eq(result.unstable_test_ids, ["c", "b"])
 }
