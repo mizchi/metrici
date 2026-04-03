@@ -1,12 +1,12 @@
 {
   "name": "mizchi/flaker",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "deps": {
     "mizchi/bitflow": "0.3.1",
     "mizchi/parquet": "0.2.0"
   },
   "readme": "README.md",
-  "repository": "",
+  "repository": "https://github.com/mizchi/flaker",
   "license": "MIT",
   "keywords": [],
   "description": "flaker core computation engine",

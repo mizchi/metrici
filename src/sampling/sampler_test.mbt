@@ -13,6 +13,7 @@ fn make_test_meta(name : String, flaky_rate : Double) -> @types.TestMeta {
     task_id: None,
     filter: None,
     test_id: None,
+    co_failure_boost: None,
   }
 }
 
@@ -67,6 +68,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
       task_id: None,
       filter: None,
       test_id: None,
+      co_failure_boost: None,
     },
     {
       suite: "failed.spec.ts",
@@ -81,6 +83,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
       task_id: None,
       filter: None,
       test_id: None,
+      co_failure_boost: None,
     },
     {
       suite: "new.spec.ts",
@@ -95,6 +98,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
       task_id: None,
       filter: None,
       test_id: None,
+      co_failure_boost: None,
     },
     {
       suite: "stable.spec.ts",
@@ -109,6 +113,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
       task_id: None,
       filter: None,
       test_id: None,
+      co_failure_boost: None,
     },
     {
       suite: "flaky.spec.ts",
@@ -123,6 +128,7 @@ test "hybrid sampling prioritizes affected, failed, new, then weighted" {
       task_id: None,
       filter: None,
       test_id: None,
+      co_failure_boost: None,
     },
   ]
   let affected_suites = ["affected.spec.ts"]

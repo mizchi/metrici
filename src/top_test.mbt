@@ -15,6 +15,7 @@ test "root package exposes sampling and identity helpers" {
         task_id: Some("task-a"),
         filter: None,
         test_id: Some("a"),
+        co_failure_boost: None,
       },
       @contracts.TestMeta::{
         suite: "tests/b.spec.ts",
@@ -29,6 +30,7 @@ test "root package exposes sampling and identity helpers" {
         task_id: Some("task-b"),
         filter: Some("@smoke"),
         test_id: Some("b"),
+        co_failure_boost: None,
       },
     ],
     count=1,
