@@ -31,11 +31,14 @@ export interface RunOpts {
   quarantineManifestEntries?: QuarantineManifestEntry[];
   cwd?: string;
   coFailureDays?: number;
+  holdoutRatio?: number;
 }
 
 export interface RunCommandResult extends ExecuteResult {
   samplingSummary: SamplingSummary;
   sampledTests: TestId[];
+  holdoutTests: TestId[];
+  holdoutResult?: ExecuteResult;
 }
 
 function enrichSampledTests(
@@ -89,6 +92,7 @@ export async function runTests(opts: RunOpts): Promise<RunCommandResult> {
     quarantineManifestEntries: opts.quarantineManifestEntries,
     listedTests,
     coFailureDays: opts.coFailureDays,
+    holdoutRatio: opts.holdoutRatio,
   });
   const runtimeRunner =
     opts.quarantineManifestEntries && opts.quarantineManifestEntries.length > 0
@@ -96,9 +100,19 @@ export async function runTests(opts: RunOpts): Promise<RunCommandResult> {
       : opts.runner;
   const tests = enrichSampledTests(plan.sampled, listedTests);
   const result = await orchestrate(runtimeRunner, tests, { cwd: opts.cwd });
+
+  // Run holdout tests if any
+  const holdoutTests = enrichSampledTests(plan.holdout, listedTests);
+  let holdoutResult: ExecuteResult | undefined;
+  if (holdoutTests.length > 0) {
+    holdoutResult = await orchestrate(runtimeRunner, holdoutTests, { cwd: opts.cwd });
+  }
+
   return {
     ...result,
     samplingSummary: plan.summary,
     sampledTests: tests,
+    holdoutTests,
+    holdoutResult,
   };
 }

@@ -564,6 +564,7 @@ addSamplingOptions(
           quarantineManifestEntries: manifest?.entries,
           cwd,
           coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : undefined,
+          holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : undefined,
         });
         console.log(formatSamplingSummary(runResult.samplingSummary, {
           ciPassWhenLocalPassRate: kpi.passSignal.rate,
@@ -589,11 +590,30 @@ addSamplingOptions(
             }),
           ),
         );
+        // Store holdout test results with is_holdout marker
+        if (runResult.holdoutResult) {
+          await store.insertTestResults(
+            runResult.holdoutResult.results.map((tc) =>
+              toStoredTestResult(tc, {
+                workflowRunId,
+                commitSha,
+                createdAt,
+              }),
+            ),
+          );
+          const holdoutFailures = runResult.holdoutResult.results.filter(
+            (r) => r.status === "failed",
+          );
+          if (holdoutFailures.length > 0) {
+            console.log(`\n# Holdout: ${holdoutFailures.length}/${runResult.holdoutTests.length} failures detected (missed by sampling)`);
+          }
+        }
         await recordSamplingRunFromSummary(store, {
           commitSha,
           commandKind: "run",
           summary: runResult.samplingSummary,
           tests: runResult.sampledTests,
+          holdoutTests: runResult.holdoutTests,
           durationMs: runResult.durationMs,
         });
         if (runResult.exitCode !== 0) {
