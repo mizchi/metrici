@@ -53,7 +53,8 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
   )
   println("Fetched \{runs.workflow_runs.length()} runs")
 
-  let mut imported = 0
+  let mut runs_imported = 0
+  let mut tests_imported = 0
   let repo = "\{config.owner}/\{config.name}"
   for run in runs.workflow_runs {
     let run_id = run.id.to_int()
@@ -62,15 +63,25 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
     }
     let sql = new_insert_run_sql(run_id, repo, run)
     exec_sql(db, sql)
-    imported = imported + 1
-  }
-  println("Imported \{imported} new workflow runs")
+    runs_imported = runs_imported + 1
 
-  let count = query_int(
-    db,
-    "SELECT COUNT(*)::INTEGER FROM workflow_runs",
-  )
-  println("Total in DB: \{count}")
+    // Download and process artifact
+    let count = try {
+      process_run_artifact(client, db, config, run)
+    } catch {
+      _ => 0
+    }
+    tests_imported = tests_imported + count
+    if count > 0 {
+      let sha = run.head_sha.substring(end=7)
+      println("  \{sha}: \{count} tests")
+    }
+  }
+  println("Imported \{runs_imported} runs, \{tests_imported} test results")
+
+  let run_count = query_int(db, "SELECT COUNT(*)::INTEGER FROM workflow_runs")
+  let test_count = query_int(db, "SELECT COUNT(*)::INTEGER FROM test_results")
+  println("Total: \{run_count} runs, \{test_count} test results")
 
   close_db(db)
   println("Done!")
