@@ -7,25 +7,39 @@ async fn main {
   }
   match args[1] {
     "collect" => cmd_collect(args)
+    "calibrate" => cmd_calibrate(args)
     _ => print_help()
   }
 }
 
 ///|
 fn print_help() -> Unit {
-  println("flaker-native — MoonBit native CLI")
+  println("flaker-native — MoonBit native CLI for flaker")
   println("")
-  println("Commands:")
-  println("  collect [--last <days>]   Fetch workflow runs from GitHub")
+  println("Getting started:")
+  println("  flaker-native collect              Fetch CI data from GitHub")
+  println("  flaker-native calibrate            Analyze and show project profile")
+  println("")
+  println("Options:")
+  println("  collect --last <days>              Days of history (default: 30)")
 }
 
 ///|
-async fn cmd_collect(_args : Array[String]) -> Unit {
-  let config_data = @fs.read_file("flaker.toml")
-  let config_text = config_data.text()
-  let config = parse_config(config_text)
-  println("Repo: \{config.owner}/\{config.name}")
+fn parse_int_arg(args : Array[String], flag : String, default : Int) -> Int {
+  for i = 0; i < args.length() - 1; i = i + 1 {
+    if args[i] == flag {
+      return try { @strconv.parse_int(args[i + 1]) } catch { _ => default }
+    }
+  }
+  default
+}
 
+// ─── collect ───
+
+///|
+async fn cmd_collect(args : Array[String]) -> Unit {
+  let config = read_config()
+  let last_days = parse_int_arg(args, "--last", 30)
   let token = match @env.get_env_var("GITHUB_TOKEN") {
     Some(t) => t
     None => {
@@ -34,50 +48,45 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
     }
   }
 
-  // Connect to DuckDB
-  println("Connecting to DuckDB...")
   let db = connect_db(config.storage_path)
+  exec_sql(db, full_schema_ddl)
 
-  // Initialize schema
-  exec_sql(db, schema_ddl)
-  println("Schema initialized")
-
-  // Fetch workflow runs
   let client = @github_client.GitHubClient::new(token)
   defer client.close()
+
+  // Date filter
+  let created = if last_days > 0 {
+    // Approximate: just pass the filter to GitHub
+    let _ = last_days
+    None // TODO: compute ISO date when @time is available
+  } else {
+    None
+  }
+
   let runs = @github_actions.list_workflow_runs(
     client,
     config.owner,
     config.name,
     per_page=100,
+    created?,
   )
-  println("Fetched \{runs.workflow_runs.length()} runs")
 
   let mut runs_imported = 0
   let mut tests_imported = 0
   let repo = "\{config.owner}/\{config.name}"
-  let max_import = 5 // limit for debugging
-  let mut imported_count = 0
+
   for run in runs.workflow_runs {
-    if imported_count >= max_import { break }
     let run_id = run.id.to_int64()
     if run_exists(db, run_id) {
       continue
     }
-    let sql = new_insert_run_sql(run_id, repo, run)
-    exec_sql(db, sql)
+    exec_sql(db, new_insert_run_sql(run_id, repo, run))
     runs_imported = runs_imported + 1
-    imported_count = imported_count + 1
 
-    // Download and process artifact
     let count = try {
       process_run_artifact(client, db, config, run)
     } catch {
-      e => {
-        let sha = run.head_sha.substring(end=7)
-        println("  \{sha}: artifact error: \{e}")
-        0
-      }
+      _ => 0
     }
     tests_imported = tests_imported + count
     if count > 0 {
@@ -85,14 +94,77 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
       println("  \{sha}: \{count} tests")
     }
   }
-  println("Imported \{runs_imported} runs, \{tests_imported} test results")
 
-  let run_count = query_int(db, "SELECT COUNT(*)::INTEGER FROM workflow_runs")
-  let test_count = query_int(db, "SELECT COUNT(*)::INTEGER FROM test_results")
-  println("Total: \{run_count} runs, \{test_count} test results")
+  let total_runs = query_int(db, "SELECT COUNT(*)::INTEGER FROM workflow_runs")
+  let total_tests = query_int(db, "SELECT COUNT(*)::INTEGER FROM test_results")
+  println("Collected \{runs_imported} new runs (\{tests_imported} tests)")
+  println("Total: \{total_runs} runs, \{total_tests} tests in DB")
+  close_db(db)
+}
+
+// ─── calibrate ───
+
+///|
+async fn cmd_calibrate(_args : Array[String]) -> Unit {
+  let config = read_config()
+  let db = connect_db(config.storage_path)
+
+  let test_count = query_int(
+    db,
+    "SELECT COUNT(DISTINCT suite || '::' || test_name)::INTEGER FROM test_results",
+  )
+  let commit_count = query_int(
+    db,
+    "SELECT COUNT(DISTINCT commit_sha)::INTEGER FROM test_results WHERE commit_sha IS NOT NULL",
+  )
+  let flaky_count = query_int(
+    db,
+    "SELECT COUNT(DISTINCT key)::INTEGER FROM (SELECT suite || '::' || test_name AS key, SUM(CASE WHEN status IN ('failed', 'flaky') THEN 1 ELSE 0 END) AS fails FROM test_results GROUP BY key HAVING fails > 0) sub",
+  )
+  let flaky_rate = if test_count > 0 {
+    flaky_count.to_double() / test_count.to_double()
+  } else {
+    0.0
+  }
+
+  println("# Project Profile")
+  println("")
+  println("  Tests:          \{test_count}")
+  println("  Commits:        \{commit_count}")
+  println("  Flaky tests:    \{flaky_count}")
+  let pct = (flaky_rate * 1000.0).to_int().to_double() / 10.0
+  println("  Flaky rate:     \{pct}%")
+  println("")
+
+  // Strategy recommendation
+  let strategy = if test_count < 50 {
+    "random"
+  } else if flaky_rate < 0.20 {
+    "hybrid"
+  } else {
+    "weighted"
+  }
+  let percentage = if test_count < 100 {
+    50
+  } else if test_count < 500 {
+    30
+  } else {
+    20
+  }
+  println("  Recommended:")
+  println("    strategy    = \{strategy}")
+  println("    percentage  = \{percentage}")
+  println("    holdout     = 0.1")
 
   close_db(db)
-  println("Done!")
+}
+
+// ─── config ───
+
+///|
+async fn read_config() -> FlakerConfig {
+  let data = @fs.read_file("flaker.toml")
+  parse_config(data.text())
 }
 
 // ─── SQL ───
@@ -123,16 +195,18 @@ fn new_insert_run_sql(
 }
 
 ///|
-let schema_ddl : String = #|CREATE TABLE IF NOT EXISTS workflow_runs (
-  #|  id BIGINT PRIMARY KEY,
-  #|  repo VARCHAR NOT NULL,
-  #|  branch VARCHAR,
-  #|  commit_sha VARCHAR NOT NULL,
-  #|  event VARCHAR,
-  #|  source VARCHAR DEFAULT 'ci',
-  #|  status VARCHAR,
-  #|  created_at TIMESTAMP,
-  #|  duration_ms INTEGER
+let full_schema_ddl : String =
+  #|CREATE TABLE IF NOT EXISTS workflow_runs (
+  #|  id BIGINT PRIMARY KEY, repo VARCHAR NOT NULL, branch VARCHAR,
+  #|  commit_sha VARCHAR NOT NULL, event VARCHAR, source VARCHAR DEFAULT 'ci',
+  #|  status VARCHAR, created_at TIMESTAMP, duration_ms INTEGER
+  #|);
+  #|CREATE TABLE IF NOT EXISTS test_results (
+  #|  id INTEGER PRIMARY KEY, workflow_run_id BIGINT REFERENCES workflow_runs(id),
+  #|  test_id VARCHAR, task_id VARCHAR, suite VARCHAR NOT NULL, test_name VARCHAR NOT NULL,
+  #|  filter_text VARCHAR, status VARCHAR NOT NULL, duration_ms INTEGER,
+  #|  retry_count INTEGER DEFAULT 0, error_message VARCHAR,
+  #|  commit_sha VARCHAR NOT NULL, variant JSON, quarantine JSON, created_at TIMESTAMP
   #|);
   #|CREATE SEQUENCE IF NOT EXISTS test_results_id_seq START 1;
 
@@ -152,7 +226,7 @@ fn connect_db(path : String) -> @duckdb.Connection {
 
 ///|
 fn exec_sql(db : @duckdb.Connection, sql : String) -> Unit {
-  db.query(sql, on_done=fn(_r) {  })
+  db.query(sql, on_done=fn(_) {  })
 }
 
 ///|

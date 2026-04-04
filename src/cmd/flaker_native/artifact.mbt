@@ -17,7 +17,6 @@ struct TestResult {
 }
 
 ///| Download artifact and import test results for a workflow run.
-///  Returns number of test results imported.
 pub async fn process_run_artifact(
   client : @github_client.GitHubClient,
   db : @duckdb.Connection,
@@ -30,28 +29,20 @@ pub async fn process_run_artifact(
     config.name,
     run.id,
   )
-
-  println("    artifacts: \{artifacts.artifacts.length()}")
   for artifact in artifacts.artifacts {
-    println("    - \{artifact.name} expired=\{artifact.expired}")
     if artifact.name == config.artifact_name && !artifact.expired {
-      // Download artifact (ZIP)
       let zip_bytes = @github_actions.download_artifact(
         client,
         config.owner,
         config.name,
         artifact.id,
       )
-      println("    zip: \{zip_bytes.length()} bytes")
       let entries = unzip(zip_bytes)
-      println("    entries: \{entries.length()}")
       let mut count = 0
       for entry in entries {
-        println("      \{entry.name} (\{entry.data.length()} bytes)")
         if entry.name.has_suffix(".json") {
           let text = bytes_to_string(entry.data)
           let results = parse_vitest_json_text(text)
-          println("        → \{results.length()} test results")
           if results.length() > 0 {
             insert_test_results(db, results, run)
             count = count + results.length()
@@ -64,17 +55,13 @@ pub async fn process_run_artifact(
   0
 }
 
-///| Try to parse text as vitest JSON reporter output.
+///|
 fn parse_vitest_json_text(text : String) -> Array[TestResult] {
-  let json = try {
-    @json.parse(text)
-  } catch {
-    _ => return []
-  }
+  let json = try { @json.parse(text) } catch { _ => return [] }
   parse_vitest_json(json)
 }
 
-///| Parse vitest --reporter=json output.
+///|
 fn parse_vitest_json(json : Json) -> Array[TestResult] {
   let results : Array[TestResult] = []
   guard json.as_object() is Some(root) else { return results }
@@ -149,7 +136,7 @@ fn parse_vitest_json(json : Json) -> Array[TestResult] {
   results
 }
 
-///| Insert test results into DuckDB.
+///|
 fn insert_test_results(
   db : @duckdb.Connection,
   results : Array[TestResult],
