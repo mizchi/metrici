@@ -148,26 +148,17 @@
     - sampling KPI の commit matching / confusion matrix / conditional rate / sample ratio reducer は `src/core/metrics/eval/` に移行済み
     - DB query と health score / markdown formatting は TS shell を維持
 
-### 分類 C: TS shell に残す
+### 分類 C: TS shell に残す（方針確定・移行不要）
 
-- [ ] adapter / artifact ingestion
-  - `src/cli/adapters/*`
-  - `src/cli/commands/import.ts`
-  - `src/cli/commands/collect.ts`
-  - `src/cli/commands/collect-local.ts`
+- [x] adapter / artifact ingestion — TS 維持
+- [x] manifest / report parse / markdown rendering — TS 維持
 
-- [ ] manifest / report parse / markdown rendering
-  - `src/cli/quarantine-manifest.ts`
-  - `src/cli/reporting/*parser.ts`
-  - `src/cli/reporting/*report.ts`
-  - `src/cli/main.ts`
+### 直近の移行順 ✅ 全完了
 
-### 直近の移行順
-
-1. `report summary reduction` を `core-reducer` として MoonBit に移す
-2. `quarantine match / mode 判定` を `core-policy` として MoonBit に移す
-3. `config ownership analysis` を `core-policy` として MoonBit に移す
-4. `stable test identity` の adapter source 正規化を TS shell として維持しつつ、必要なら variant contract を bitflow/actrun に広げる
+1. ~~`report summary reduction` を `core-reducer` として MoonBit に移す~~
+2. ~~`quarantine match / mode 判定` を `core-policy` として MoonBit に移す~~
+3. ~~`config ownership analysis` を `core-policy` として MoonBit に移す~~
+4. ~~`stable test identity` の adapter source 正規化を TS shell として維持~~
 
 ## ML ベーステスト選択
 
@@ -234,25 +225,21 @@ HAVING co_runs >= 3
 α は自動チューニング（eval の confusion matrix から最適化）
 ```
 
-### Stage 2: GBDT 予測モデル（LightGBM）
+### Stage 2: GBDT 予測モデル ✅ TS 版で実装済み
 
-- 特徴量:
-  - co_failure_rate（Stage 1 のクエリから）
-  - dependency_graph_distance（既存の graph analyzer）
-  - flaky_rate（既存）
-  - change_size: `SUM(additions + deletions)` from `commit_changes`
-  - recency_weighted_failures: 指数減衰 `Σ fail * exp(-λ * days_ago)`
-  - is_new_test: `total_runs <= 1`
-- ラベル: CI でこのテストが落ちたか (0/1)
-- 学習: native target で LightGBM C API、daily batch で `init_model` 引き継ぎ
-- モデル保存: `.flaker/models/model-{date}.json`
-- モデルホスト: 未決定（S3? GitHub Releases? 後で決める）
+- `flaker train` で DuckDB 履歴から GBDT モデルを学習
+- `flaker sample --strategy gbdt` / `flaker run` で推論
+- 特徴量: flaky_rate, co_failure_boost, total_runs, fail_count, avg_duration_ms, previously_failed, is_new
+- TS 実装（findBestSplit O(n log n) 最適化済み）
+- LightGBM C API (native target) は将来の改善候補
+- モデル保存: `.flaker/models/gbdt.json`
 
-### Stage 3: Holdout サンプリング（フィードバックループ）
+### Stage 3: Holdout サンプリング（フィードバックループ）✅ 実装済み
 
-- スキップしたテストの一部をランダム実行し「見逃し」を検出
-- これがないと「落ちるテストをスキップし続けて気づかない」問題が発生
-- 設計詳細: 未決定（`sampling_run_tests` に `is_holdout` を追加する案あり）
+- `flaker run --holdout-ratio 0.1` でスキップしたテストの 10% をランダム実行
+- `sampling_run_tests.is_holdout` で holdout テストを区別
+- eval-fixture で holdoutFNR を計測（500テストで hybrid 0.5%）
+- `flaker calibrate` が holdout_ratio をデフォルト 0.1 で設定
 
 ### 自動チューニング
 
@@ -427,3 +414,21 @@ coverage-guided fuzzing の知見をテスト選択に応用する。
 
 ## 完了済み
 - [x] MoonBit 未ビルド時でも affected target を解決できる TypeScript fallback を実装
+- [x] `flaker calibrate` — プロジェクト特性を分析し flaker.toml に最適な [sampling] 設定を書き出す
+- [x] `flaker insights` — CI vs ローカルの失敗パターンを比較
+- [x] `flaker init` の git remote 自動検出（owner/name 引数不要）
+- [x] `flaker run` の changed files 自動検出（git diff ベース）
+- [x] `flaker run` の config.sampling 自動ロード（引数なしで動作）
+- [x] `workflow_runs.source` カラム追加（CI/local データ分離）
+- [x] `flaker run` で commit_changes 自動収集（co-failure 学習用）
+- [x] `flaker train` で CI/local データの重み付け（local は 0.5）
+- [x] GBDT findBestSplit O(n²) → O(n log n) 最適化
+- [x] VitestRunner: suite ファイル指定 + post-filter（テスト名フィルタの不正確さを修正）
+- [x] MoonBit CLI ノイズ除去（help/unknown コマンドを Node.js CLI に委譲）
+- [x] セキュリティ修正: 全 runner を spawnSync + arg array に統一（command injection 防止）
+- [x] セキュリティ修正: SQL injection 修正（INTERVAL 補間、Parquet パス、LIMIT）
+- [x] セキュリティ修正: prototype pollution 防止（deepMerge）
+- [x] セキュリティ修正: query コマンド read-only 化 + DuckDB filesystem 関数ブロック
+- [x] セキュリティ修正: CustomAdapter の JSON shape validation
+- [x] 評価レポート更新（24パターン multi-sweep、holdoutFNR、戦略選択ガイド）
+- [x] パイプライン蓄積テスト（accumulate → calibrate → train → sample E2E）
