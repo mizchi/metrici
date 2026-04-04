@@ -42,17 +42,20 @@ pub async fn process_run_artifact(
         config.name,
         artifact.id.to_int(),
       )
-      // TODO: ZIP extraction blocked by bobzhang/zipc UInt16 compat issue
-      // For now, try to parse the bytes directly as JSON (works if artifact is a single file)
-      let text = bytes_to_string(zip_bytes)
-      let results = parse_vitest_json_text(text)
-      if results.length() > 0 {
-        insert_test_results(db, results, run)
-        return results.length()
+      // Extract JSON files from ZIP and parse test results
+      let entries = unzip(zip_bytes)
+      let mut count = 0
+      for entry in entries {
+        if entry.name.has_suffix(".json") {
+          let text = bytes_to_string(entry.data)
+          let results = parse_vitest_json_text(text)
+          if results.length() > 0 {
+            insert_test_results(db, results, run)
+            count = count + results.length()
+          }
+        }
       }
-      // If parsing failed, it's a ZIP we can't extract yet
-      println("    artifact \{artifact.name}: \{zip_bytes.length()} bytes (ZIP extraction pending)")
-      return 0
+      return count
     }
   }
   0
