@@ -890,8 +890,16 @@ reportCommand
 // --- query ---
 program
   .command("query <sql>")
-  .description("Execute a SQL query against the metrics database")
+  .description("Execute a read-only SQL query against the metrics database")
   .action(async (sql: string) => {
+    // Reject write operations to prevent accidental data modification
+    const normalized = sql.trim().toUpperCase();
+    const writePatterns = /^(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|COPY\s)/;
+    if (writePatterns.test(normalized)) {
+      console.error("Error: query command only supports read-only (SELECT) queries.");
+      console.error("Use DuckDB CLI directly for write operations.");
+      process.exit(1);
+    }
     const config = loadConfig(process.cwd());
     const store = new DuckDBStore(resolve(config.storage.path));
     await store.initialize();
