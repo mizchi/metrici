@@ -11,7 +11,7 @@ pub struct FlakerConfig {
 pub fn parse_config(content : String) -> FlakerConfig raise {
   let toml = @toml.parse(content)
   guard toml is TomlTable(root) else {
-    raise Failure("flaker.toml: expected table at root")
+    raise Failure::Failure("flaker.toml: expected table at root")
   }
 
   // [repo]
@@ -34,7 +34,7 @@ fn get_table(
   section : String,
 ) -> Map[String, @toml.TomlValue] raise {
   guard root.get(section) is Some(TomlTable(t)) else {
-    raise Failure("flaker.toml: missing [\{section}]")
+    raise Failure::Failure("flaker.toml: missing [\{section}]")
   }
   t
 }
@@ -47,7 +47,7 @@ fn get_string(
 ) -> String raise {
   let tbl = get_table(root, section)
   guard tbl.get(key) is Some(TomlString(s)) else {
-    raise Failure("flaker.toml: missing \{section}.\{key}")
+    raise Failure::Failure("flaker.toml: missing \{section}.\{key}")
   }
   s
 }

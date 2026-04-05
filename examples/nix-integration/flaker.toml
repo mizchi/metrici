@@ -1,0 +1,15 @@
+[repo]
+owner = "your-org"
+name = "your-repo"
+
+[storage]
+path = ".flaker/data"
+
+[adapter]
+type = "vitest"
+artifact_name = "vitest-report"
+
+[sampling]
+strategy = "hybrid"
+percentage = 30
+holdout = 0.1

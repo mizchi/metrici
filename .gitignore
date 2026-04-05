@@ -9,3 +9,5 @@ _build
 .pnpm-store
 .npm-cache
 dist/flaker-native
+result
+.direnv

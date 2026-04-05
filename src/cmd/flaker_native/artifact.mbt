@@ -55,12 +55,12 @@ fn parse_vitest_json_text(text : String) -> Array[TestResult] {
 ///|
 fn parse_vitest_json(json : Json) -> Array[TestResult] {
   let results : Array[TestResult] = []
-  guard json.as_object() is Some(root) else { return results }
+  guard json is Json::Object(root) else { return results }
   guard root.get("testResults") is Some(Json::Array(test_files)) else {
     return results
   }
   for file_json in test_files {
-    guard file_json.as_object() is Some(file_obj) else { continue }
+    guard file_json is Json::Object(file_obj) else { continue }
     let file_name = match file_obj.get("name") {
       Some(Json::String(s)) => s
       _ => continue
@@ -69,7 +69,7 @@ fn parse_vitest_json(json : Json) -> Array[TestResult] {
       continue
     }
     for assertion_json in assertions {
-      guard assertion_json.as_object() is Some(a) else { continue }
+      guard assertion_json is Json::Object(a) else { continue }
       let full_name = match a.get("fullName") {
         Some(Json::String(s)) => s
         _ => continue
@@ -82,7 +82,7 @@ fn parse_vitest_json(json : Json) -> Array[TestResult] {
         continue
       }
       let duration = match a.get("duration") {
-        Some(Json::Number(n)) => n.to_int()
+        Some(Json::Number(n, ..)) => n.to_int()
         _ => 0
       }
       let error_msg = match a.get("failureMessages") {

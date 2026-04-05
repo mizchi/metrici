@@ -81,7 +81,7 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
     }
     tests_imported = tests_imported + count
     if count > 0 {
-      let sha = run.head_sha.substring(end=7)
+      let sha = run.head_sha[:7].to_string()
       println("  \{sha}: \{count} tests")
     }
   }

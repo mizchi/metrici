@@ -7,7 +7,9 @@ import {
   "mizchi/flaker/contracts" @types,
   "mizchi/flaker/sampling" @sampler,
   "moonbitlang/async",
-  "moonbitlang/core/strconv",
+  "moonbitlang/core/string",
+  "moonbitlang/core/json",
+  "moonbitlang/core/builtin",
   "moonbitlang/async/fs" @fs,
   "moonbitlang/core/env" @env,
 }

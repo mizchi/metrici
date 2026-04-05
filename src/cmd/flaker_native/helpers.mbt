@@ -4,7 +4,7 @@
 fn parse_int_arg(args : Array[String], flag : String, default : Int) -> Int {
   for i = 0; i < args.length() - 1; i = i + 1 {
     if args[i] == flag {
-      return try { @strconv.parse_int(args[i + 1]) } catch { _ => default }
+      return try { @string.parse_int(args[i + 1]) } catch { _ => default }
     }
   }
   default
@@ -31,7 +31,7 @@ fn sql_escape(s : String) -> String {
 fn bytes_to_string(b : Bytes) -> String {
   let buf = StringBuilder::new()
   for i = 0; i < b.length(); i = i + 1 {
-    buf.write_char(Char::from_int(b[i].to_int()))
+    buf.write_char(b[i].to_int().unsafe_to_char())
   }
   buf.to_string()
 }

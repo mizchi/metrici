@@ -50,10 +50,10 @@ fn build_test_meta(db : @duckdb.Connection) -> Array[@types.TestMeta] {
   )
   let meta : Array[@types.TestMeta] = []
   for row in rows {
-    let total_runs = try { @strconv.parse_int(row[2]) } catch { _ => 0 }
-    let fail_count = try { @strconv.parse_int(row[3]) } catch { _ => 0 }
-    let flaky_rate = try { @strconv.parse_double(row[4]) } catch { _ => 0.0 }
-    let avg_duration = try { @strconv.parse_int(row[6]) } catch { _ => 0 }
+    let total_runs = try { @string.parse_int(row[2]) } catch { _ => 0 }
+    let fail_count = try { @string.parse_int(row[3]) } catch { _ => 0 }
+    let flaky_rate = try { @string.parse_double(row[4]) } catch { _ => 0.0 }
+    let avg_duration = try { @string.parse_int(row[6]) } catch { _ => 0 }
     meta.push({
       suite: row[0],
       test_name: row[1],
