@@ -5,6 +5,7 @@ import { playwrightAdapter } from "./playwright.js";
 import { vrtBenchAdapter } from "./vrt-bench.js";
 import { vitestAdapter } from "./vitest.js";
 import { vrtMigrationAdapter } from "./vrt-migration.js";
+import { tapAdapter } from "./tap.js";
 
 export function createTestResultAdapter(
   type: string,
@@ -21,6 +22,8 @@ export function createTestResultAdapter(
       return vrtMigrationAdapter;
     case "vrt-bench":
       return vrtBenchAdapter;
+    case "tap":
+      return tapAdapter;
     case "custom":
       if (!customCommand) {
         throw new Error("Custom adapter requires a command (customCommand)");
