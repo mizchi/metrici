@@ -6,6 +6,8 @@ import { vrtBenchAdapter } from "./vrt-bench.js";
 import { vitestAdapter } from "./vitest.js";
 import { vrtMigrationAdapter } from "./vrt-migration.js";
 import { tapAdapter } from "./tap.js";
+import { gotestAdapter } from "./gotest.js";
+import { cargoTestAdapter } from "./cargo.js";
 
 export function createTestResultAdapter(
   type: string,
@@ -24,6 +26,10 @@ export function createTestResultAdapter(
       return vrtBenchAdapter;
     case "tap":
       return tapAdapter;
+    case "gotest":
+      return gotestAdapter;
+    case "cargo-test":
+      return cargoTestAdapter;
     case "custom":
       if (!customCommand) {
         throw new Error("Custom adapter requires a command (customCommand)");
