@@ -185,6 +185,6 @@ describe("true flaky detection", () => {
 
   it("formats empty results", () => {
     const output = formatTrueFlakyTable([]);
-    expect(output).toBe("No true flaky tests found.");
+    expect(output).toBe("No retry-flaky tests found (pass+fail within same commit).");
   });
 });
