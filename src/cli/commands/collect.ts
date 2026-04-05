@@ -27,6 +27,12 @@ export interface GitHubClient {
     artifacts: Array<{ id: number; name: string; expired: boolean }>;
   }>;
   downloadArtifact(artifactId: number): Promise<Buffer>;
+  getCommitFiles?(owner: string, repo: string, sha: string): Promise<Array<{
+    filename: string;
+    status: string;
+    additions: number;
+    deletions: number;
+  }>>;
 }
 
 export interface CollectOpts {
@@ -222,7 +228,26 @@ export async function collectWorkflowRuns(
       if (testResults.length > 0) {
         await store.insertTestResults(testResults);
       }
-      await collectCommitChanges(store, process.cwd(), run.head_sha);
+      // Collect commit changes via GitHub API (git diff-tree requires local SHA)
+      if (github.getCommitFiles && !await store.hasCommitChanges(run.head_sha)) {
+        try {
+          const [owner, repoName] = repo.split("/");
+          const files = await github.getCommitFiles(owner, repoName, run.head_sha);
+          if (files.length > 0) {
+            await store.insertCommitChanges(run.head_sha, files.map((f) => ({
+              filePath: f.filename,
+              changeType: f.status,
+              additions: f.additions,
+              deletions: f.deletions,
+            })));
+          }
+        } catch {
+          // Fall back to local git
+          await collectCommitChanges(store, process.cwd(), run.head_sha);
+        }
+      } else {
+        await collectCommitChanges(store, process.cwd(), run.head_sha);
+      }
       await store.recordCollectedArtifact(collectedRecord);
       if (storagePath) {
         await exportRunParquet(store, run.id, storagePath);

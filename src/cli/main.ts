@@ -391,6 +391,15 @@ program
         });
         return Buffer.from(response.data as ArrayBuffer);
       },
+      async getCommitFiles(o: string, r: string, sha: string) {
+        const response = await octokit.repos.getCommit({ owner: o, repo: r, ref: sha });
+        return (response.data.files ?? []).map((f) => ({
+          filename: f.filename,
+          status: f.status ?? "modified",
+          additions: f.additions ?? 0,
+          deletions: f.deletions ?? 0,
+        }));
+      },
     };
 
     try {
