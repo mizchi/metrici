@@ -18,4 +18,6 @@ supported_targets = "+native"
 
 options(
   "is-main": true,
+  "native-stub": ["shell_native.c"],
+  "warn-list": "-0055",
 )
