@@ -1,43 +1,46 @@
 #!/bin/bash
-# Build flaker-native standalone binary.
+# Build flaker-native binary.
 # Requires: brew install duckdb
 set -e
 
-BREW_PREFIX="${HOMEBREW_PREFIX:-/Users/mz/brew}"
+BREW_PREFIX="${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null || echo /opt/homebrew)}"
+BUILD_DIR="_build/native/debug/build"
+BINARY="${BUILD_DIR}/cmd/flaker_native/flaker_native"
 
+# Step 1: Generate C via moon (ignore link failure — moon doesn't pass cc-link-flags)
 C_INCLUDE_PATH="$BREW_PREFIX/include" \
 LIBRARY_PATH="$BREW_PREFIX/lib" \
 moon build --target native src/cmd/flaker_native 2>/dev/null || true
 
-# moon build doesn't pass cc-link-flags for dependencies.
-# Link manually with the generated C file.
-BINARY="_build/native/debug/build/cmd/flaker_native/flaker_native"
-
-if [ ! -f "${BINARY}.exe" ]; then
-  echo "Linking manually..."
-  cc -o "${BINARY}.exe" \
-    -I"$HOME/.moon/include" \
-    "$HOME/.moon/lib/libmoonbitrun.o" \
-    "${BINARY}.c" \
-    _build/native/debug/build/runtime.o \
-    _build/native/debug/build/.mooncakes/f4ah6o/duckdb/libduckdb.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/c_buffer/libc_buffer.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/env_util/libenv_util.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/os_string/libos_string.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/os_error/libos_error.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/fd_util/libfd_util.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/time/libtime.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/internal/event_loop/libevent_loop.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/socket/libsocket.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/tls/libtls.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/x/fs/libfs.a \
-    _build/native/debug/build/.mooncakes/mizchi/zlib/libzlib.a \
-    _build/native/debug/build/.mooncakes/moonbitlang/async/fs/libfs.a \
-    -L"$BREW_PREFIX/lib" \
-    -lduckdb -lz -lm \
-    "$HOME/.moon/lib/libbacktrace.a" \
-    -Wl,-rpath,"$BREW_PREFIX/lib"
+if [ ! -f "${BINARY}.c" ]; then
+  echo "Error: MoonBit compilation failed."
+  exit 1
 fi
 
-echo "Built: ${BINARY}.exe"
-ls -lh "${BINARY}.exe"
+# Step 2: Link
+echo "Linking..."
+cc -O2 -o dist/flaker-native \
+  -I"$HOME/.moon/include" \
+  "$HOME/.moon/lib/libmoonbitrun.o" \
+  "${BINARY}.c" \
+  "${BUILD_DIR}/runtime.o" \
+  "${BUILD_DIR}/.mooncakes/f4ah6o/duckdb/libduckdb.a" \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/async/internal/*/lib*.a \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/async/os_error/lib*.a \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/async/socket/lib*.a \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/async/tls/lib*.a \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/async/fs/lib*.a \
+  ${BUILD_DIR}/.mooncakes/moonbitlang/x/fs/lib*.a \
+  ${BUILD_DIR}/.mooncakes/mizchi/zlib/lib*.a \
+  -L"$BREW_PREFIX/lib" \
+  -lduckdb -lz -lm \
+  "$HOME/.moon/lib/libbacktrace.a" \
+  -Wl,-rpath,"$BREW_PREFIX/lib" \
+  -Wl,-rpath,@executable_path
+
+mkdir -p dist
+echo ""
+ls -lh dist/flaker-native
+file dist/flaker-native
+echo ""
+echo "Run: dist/flaker-native --help"
