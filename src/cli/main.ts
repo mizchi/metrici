@@ -1472,14 +1472,15 @@ program
   .description("Analyze project history and write optimal [sampling] config to flaker.toml")
   .option("--window-days <days>", "Analysis window in days", "90")
   .option("--dry-run", "Show recommendation without writing to flaker.toml")
-  .action(async (opts: { windowDays: string; dryRun?: boolean }) => {
+  .option("--explain", "Output JSON context for LLM-assisted calibration")
+  .action(async (opts: { windowDays: string; dryRun?: boolean; explain?: boolean }) => {
     const { existsSync } = await import("node:fs");
     const cwd = process.cwd();
     const config = loadConfig(cwd);
     const store = new DuckDBStore(resolve(config.storage.path));
     await store.initialize();
     try {
-      const { analyzeProject, recommendSampling, formatCalibrationReport } = await import("./commands/calibrate.js");
+      const { analyzeProject, recommendSampling, formatCalibrationReport, buildExplainContext } = await import("./commands/calibrate.js");
 
       const hasResolver = config.affected.resolver !== "" && config.affected.resolver !== "none";
       const modelPath = resolve(".flaker", "models", "gbdt.json");
@@ -1492,6 +1493,11 @@ program
       });
       const sampling = recommendSampling(profile);
       const result = { profile, sampling };
+
+      if (opts.explain) {
+        console.log(JSON.stringify(buildExplainContext(result), null, 2));
+        return;
+      }
 
       console.log(formatCalibrationReport(result));
 

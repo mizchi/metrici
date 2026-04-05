@@ -14,6 +14,11 @@ describe("recommendSampling", () => {
       commitCount: 100,
       hasResolver: true,
       hasGBDTModel: false,
+      trueFlakyRate: 0.05,
+      hasCoFailureData: false,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 0,
+      confidence: "moderate" as const,
     };
     const result = recommendSampling(profile);
     expect(result.strategy).toBe("random");
@@ -27,6 +32,11 @@ describe("recommendSampling", () => {
       commitCount: 100,
       hasResolver: true,
       hasGBDTModel: false,
+      trueFlakyRate: 0.05,
+      hasCoFailureData: false,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 0,
+      confidence: "moderate" as const,
     };
     const result = recommendSampling(profile);
     expect(result.strategy).toBe("hybrid");
@@ -38,10 +48,15 @@ describe("recommendSampling", () => {
     const profile: ProjectProfile = {
       testCount: 500,
       flakyRate: 0.25,
+      trueFlakyRate: 0.25,
       coFailureStrength: 0.6,
+      hasCoFailureData: true,
       commitCount: 200,
       hasResolver: false,
       hasGBDTModel: true,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 125,
+      confidence: "high" as const,
     };
     const result = recommendSampling(profile);
     expect(result.strategy).toBe("gbdt");
@@ -57,6 +72,11 @@ describe("recommendSampling", () => {
       commitCount: 50,
       hasResolver: false,
       hasGBDTModel: false,
+      trueFlakyRate: 0.05,
+      hasCoFailureData: false,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 0,
+      confidence: "moderate" as const,
     };
     const result = recommendSampling(profile);
     expect(result.strategy).toBe("weighted");
@@ -70,6 +90,11 @@ describe("recommendSampling", () => {
       commitCount: 200,
       hasResolver: true,
       hasGBDTModel: false,
+      trueFlakyRate: 0.05,
+      hasCoFailureData: false,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 0,
+      confidence: "moderate" as const,
     };
     const result = recommendSampling(profile);
     expect(result.strategy).toBe("hybrid");
@@ -83,6 +108,11 @@ describe("recommendSampling", () => {
       commitCount: 50,
       hasResolver: true,
       hasGBDTModel: false,
+      trueFlakyRate: 0.05,
+      hasCoFailureData: false,
+      brokenTestCount: 0,
+      intermittentFlakyCount: 0,
+      confidence: "moderate" as const,
     };
     const result = recommendSampling(profile);
     expect(result.calibrated_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);

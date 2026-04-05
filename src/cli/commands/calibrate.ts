@@ -4,10 +4,20 @@ import type { SamplingConfig } from "../config.js";
 export interface ProjectProfile {
   testCount: number;
   flakyRate: number;
+  /** Flaky rate excluding always-failing tests (true intermittent rate). */
+  trueFlakyRate: number;
   coFailureStrength: number;
+  /** Whether co-failure data actually exists (vs default). */
+  hasCoFailureData: boolean;
   commitCount: number;
   hasResolver: boolean;
   hasGBDTModel: boolean;
+  /** Tests that fail 100% of runs — broken, not flaky. */
+  brokenTestCount: number;
+  /** Tests with intermittent failures (0 < failRate < 100%). */
+  intermittentFlakyCount: number;
+  /** Data sufficiency level. */
+  confidence: "insufficient" | "low" | "moderate" | "high";
 }
 
 export interface CalibrationResult {
@@ -24,7 +34,6 @@ export async function analyzeProject(
 ): Promise<ProjectProfile> {
   const window = opts.windowDays ?? 90;
 
-  // Count distinct tests (CI only for authoritative count)
   const testCountRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT tr.suite || '::' || tr.test_name) AS cnt
     FROM test_results tr
@@ -34,37 +43,50 @@ export async function analyzeProject(
   `);
   const testCount = Number(testCountRows[0]?.cnt ?? 0);
 
-  // Compute overall flaky rate from CI results only
-  const flakyRows = await store.raw<{ flaky_count: number; total_count: number }>(`
+  // Classify tests: broken (100% fail) vs intermittent flaky vs stable
+  const classRows = await store.raw<{
+    broken_count: number;
+    intermittent_count: number;
+    total_failing: number;
+    total_count: number;
+  }>(`
     SELECT
-      COUNT(DISTINCT CASE WHEN fail_count > 0 THEN key END) AS flaky_count,
+      COUNT(DISTINCT CASE WHEN fail_rate >= 100 THEN key END) AS broken_count,
+      COUNT(DISTINCT CASE WHEN fail_rate > 0 AND fail_rate < 100 THEN key END) AS intermittent_count,
+      COUNT(DISTINCT CASE WHEN fail_rate > 0 THEN key END) AS total_failing,
       COUNT(DISTINCT key) AS total_count
     FROM (
       SELECT
         tr.suite || '::' || tr.test_name AS key,
-        SUM(CASE WHEN tr.status IN ('failed', 'flaky') THEN 1 ELSE 0 END) AS fail_count
+        COUNT(*) AS runs,
+        ROUND(COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 1) AS fail_rate
       FROM test_results tr
       JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
       WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
         AND COALESCE(wr.source, 'ci') = 'ci'
       GROUP BY tr.suite, tr.test_name
+      HAVING COUNT(*) >= 2
     ) sub
   `);
-  const flakyCount = Number(flakyRows[0]?.flaky_count ?? 0);
-  const totalCount = Number(flakyRows[0]?.total_count ?? 1);
-  const flakyRate = totalCount > 0 ? flakyCount / totalCount : 0;
+  const brokenTestCount = Number(classRows[0]?.broken_count ?? 0);
+  const intermittentFlakyCount = Number(classRows[0]?.intermittent_count ?? 0);
+  const totalFailing = Number(classRows[0]?.total_failing ?? 0);
+  const totalClassified = Number(classRows[0]?.total_count ?? 1);
 
-  // Estimate co-failure strength: how often do file changes correlate with test failures?
-  // Use commit_changes if available, otherwise estimate from test failure clustering
-  let coFailureStrength = 0.5; // default mid estimate
+  const flakyRate = totalClassified > 0 ? totalFailing / totalClassified : 0;
+  const trueFlakyRate = totalClassified > 0 ? intermittentFlakyCount / totalClassified : 0;
+
+  // Co-failure data
+  let coFailureStrength = 0.5;
+  let hasCoFailureData = false;
   try {
     const coRows = await store.raw<{ cnt: number }>(`
       SELECT COUNT(*) AS cnt FROM commit_changes LIMIT 1
     `);
     if (Number(coRows[0]?.cnt ?? 0) > 0) {
+      hasCoFailureData = true;
       const corrRows = await store.raw<{ avg_co_fail: number }>(`
-        SELECT
-          COALESCE(AVG(co_fail_rate), 0) AS avg_co_fail
+        SELECT COALESCE(AVG(co_fail_rate), 0) AS avg_co_fail
         FROM (
           SELECT
             cc.file_path,
@@ -87,7 +109,6 @@ export async function analyzeProject(
     // commit_changes table may not exist
   }
 
-  // Count commits with test data
   const commitRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT commit_sha) AS cnt
     FROM test_results
@@ -96,13 +117,25 @@ export async function analyzeProject(
   `);
   const commitCount = Number(commitRows[0]?.cnt ?? 0);
 
+  // Confidence level
+  let confidence: ProjectProfile["confidence"];
+  if (commitCount < 5) confidence = "insufficient";
+  else if (commitCount < 30) confidence = "low";
+  else if (commitCount < 100) confidence = "moderate";
+  else confidence = "high";
+
   return {
     testCount,
     flakyRate: Math.round(flakyRate * 1000) / 1000,
+    trueFlakyRate: Math.round(trueFlakyRate * 1000) / 1000,
     coFailureStrength: Math.round(coFailureStrength * 100) / 100,
+    hasCoFailureData,
     commitCount,
     hasResolver: opts.hasResolver,
     hasGBDTModel: opts.hasGBDTModel,
+    brokenTestCount,
+    intermittentFlakyCount,
+    confidence,
   };
 }
 
@@ -112,39 +145,30 @@ export async function analyzeProject(
 export function recommendSampling(profile: ProjectProfile): SamplingConfig {
   const now = new Date().toISOString().slice(0, 10);
 
-  // Strategy selection based on sweep results
   let strategy: string;
   if (profile.testCount < 50) {
     strategy = "random";
-  } else if (profile.hasResolver && profile.flakyRate < 0.20) {
-    // Low-to-medium flaky + resolver → hybrid dominates in sweep benchmarks
+  } else if (profile.hasResolver && profile.trueFlakyRate < 0.20) {
     strategy = "hybrid";
-  } else if (profile.hasGBDTModel && profile.commitCount >= 100 && profile.flakyRate >= 0.15) {
-    // High flaky + sufficient training data → GBDT can outperform hybrid
+  } else if (profile.hasGBDTModel && profile.commitCount >= 100 && profile.trueFlakyRate >= 0.15) {
     strategy = "gbdt";
   } else if (profile.hasResolver) {
-    // High flaky but no GBDT → hybrid is still safest
     strategy = "hybrid";
   } else {
-    // No resolver available
     strategy = profile.hasGBDTModel && profile.commitCount >= 100 ? "gbdt" : "weighted";
   }
 
-  // Sample percentage: scale with test count
   let percentage: number;
   if (profile.testCount < 100) {
-    percentage = 50; // small suites, run more
+    percentage = 50;
   } else if (profile.testCount < 500) {
     percentage = 30;
   } else {
     percentage = 20;
   }
 
-  // Holdout ratio: always enable for feedback loop
   const holdoutRatio = 0.1;
-
-  // Co-failure window: shorter if high flaky (more recent data is more relevant)
-  const coFailureDays = profile.flakyRate > 0.15 ? 60 : 90;
+  const coFailureDays = profile.trueFlakyRate > 0.15 ? 60 : 90;
 
   return {
     strategy,
@@ -152,7 +176,7 @@ export function recommendSampling(profile: ProjectProfile): SamplingConfig {
     holdout_ratio: holdoutRatio,
     co_failure_days: coFailureDays,
     calibrated_at: now,
-    detected_flaky_rate: profile.flakyRate,
+    detected_flaky_rate: profile.trueFlakyRate,
     detected_co_failure_strength: profile.coFailureStrength,
     detected_test_count: profile.testCount,
   };
@@ -163,42 +187,107 @@ export function recommendSampling(profile: ProjectProfile): SamplingConfig {
  */
 export function formatCalibrationReport(result: CalibrationResult): string {
   const { profile: p, sampling: s } = result;
-  const lines: string[] = [
-    "# Calibration Result",
-    "",
-    "## Project Profile",
-    `  Tests:              ${p.testCount}`,
-    `  Flaky rate:         ${(p.flakyRate * 100).toFixed(1)}%`,
-    `  Co-failure strength: ${p.coFailureStrength.toFixed(2)}`,
-    `  Commits (window):   ${p.commitCount}`,
-    `  Resolver available: ${p.hasResolver ? "yes" : "no"}`,
-    `  GBDT model:         ${p.hasGBDTModel ? "yes" : "no"}`,
-    "",
-    "## Recommended [sampling] config",
-    `  strategy          = "${s.strategy}"`,
-    `  percentage        = ${s.percentage}`,
-    `  holdout_ratio     = ${s.holdout_ratio}`,
-    `  co_failure_days   = ${s.co_failure_days}`,
-    "",
-    "## Rationale",
-  ];
+  const lines: string[] = [];
 
-  if (s.strategy === "hybrid") {
-    if (p.flakyRate < 0.10) {
-      lines.push("  Low flaky rate + resolver → hybrid achieves 95-100% recall in sweep benchmarks.");
-    } else {
-      lines.push("  Medium-high flaky rate but resolver available → hybrid is the safest default.");
-    }
-  } else if (s.strategy === "gbdt") {
-    lines.push("  High flaky rate + sufficient training data → GBDT outperforms hybrid in this regime.");
-  } else if (s.strategy === "weighted") {
-    lines.push("  No resolver or GBDT model → weighted with co-failure boost is the best available.");
-  } else if (s.strategy === "random") {
-    lines.push("  Test suite is small (< 50) → sampling overhead exceeds benefit.");
+  // Data sufficiency warning
+  if (p.confidence === "insufficient") {
+    lines.push("⚠ Insufficient data (< 5 commits). Recommendations are unreliable.");
+    lines.push("  Run `flaker collect --last 30` to gather more history.");
+    lines.push("");
+  } else if (p.confidence === "low") {
+    lines.push("⚠ Low confidence (" + p.commitCount + " commits). Collect 50+ for reliable calibration.");
+    lines.push("");
   }
 
+  lines.push("# Project Profile");
   lines.push("");
-  lines.push("Re-calibrate periodically (weekly recommended) as project characteristics change.");
+  lines.push(`  Tests:              ${p.testCount}`);
+  lines.push(`  Commits:            ${p.commitCount} (confidence: ${p.confidence})`);
+
+  // Broken vs flaky distinction
+  if (p.brokenTestCount > 0) {
+    lines.push(`  Broken tests:       ${p.brokenTestCount} (100% fail rate — fix or quarantine these)`);
+  }
+  if (p.intermittentFlakyCount > 0) {
+    lines.push(`  Flaky tests:        ${p.intermittentFlakyCount} (intermittent failures)`);
+  }
+  lines.push(`  True flaky rate:    ${(p.trueFlakyRate * 100).toFixed(1)}% (excluding broken tests)`);
+
+  if (!p.hasCoFailureData) {
+    lines.push(`  Co-failure data:    none (using default estimate)`);
+  } else {
+    lines.push(`  Co-failure strength: ${p.coFailureStrength.toFixed(2)}`);
+  }
+
+  lines.push(`  Resolver:           ${p.hasResolver ? "yes" : "no"}`);
+  lines.push(`  GBDT model:         ${p.hasGBDTModel ? "yes" : "no"}`);
+
+  lines.push("");
+  lines.push("## Recommended [sampling] config");
+  lines.push(`  strategy          = "${s.strategy}"    # ${strategyExplanation(s.strategy)}`);
+  lines.push(`  percentage        = ${s.percentage}              # run ${s.percentage}% of tests`);
+  lines.push(`  holdout_ratio     = ${s.holdout_ratio}           # randomly verify ${(s.holdout_ratio! * 100).toFixed(0)}% of skipped tests`);
+  lines.push(`  co_failure_days   = ${s.co_failure_days}`);
+
+  // Priority actions
+  lines.push("");
+  lines.push("## Next steps");
+  if (p.brokenTestCount > 0) {
+    lines.push(`  1. Fix or quarantine ${p.brokenTestCount} broken test(s) — they inflate flaky metrics`);
+  }
+  if (p.confidence === "insufficient" || p.confidence === "low") {
+    lines.push(`  ${p.brokenTestCount > 0 ? "2" : "1"}. Collect more CI data: \`flaker collect --last 30\``);
+    lines.push(`     Then re-run: \`flaker calibrate\``);
+  } else {
+    lines.push(`  ${p.brokenTestCount > 0 ? "2" : "1"}. Apply config: \`flaker calibrate\` (without --dry-run)`);
+    lines.push(`  ${p.brokenTestCount > 0 ? "3" : "2"}. Run tests: \`flaker run\``);
+  }
+  lines.push("");
+  lines.push("Re-calibrate weekly as project characteristics change.");
 
   return lines.join("\n");
+}
+
+function strategyExplanation(strategy: string): string {
+  switch (strategy) {
+    case "hybrid": return "dependency graph + co-failure + weighted fill";
+    case "gbdt": return "ML model ranking";
+    case "weighted": return "prioritize by flaky rate + co-failure";
+    case "random": return "uniform random (small suite)";
+    default: return strategy;
+  }
+}
+
+/**
+ * Generate a JSON context blob for LLM-assisted calibration.
+ */
+export function buildExplainContext(result: CalibrationResult): Record<string, unknown> {
+  const { profile: p, sampling: s } = result;
+  return {
+    project: {
+      testCount: p.testCount,
+      commitCount: p.commitCount,
+      confidence: p.confidence,
+      brokenTests: p.brokenTestCount,
+      intermittentFlakyTests: p.intermittentFlakyCount,
+      trueFlakyRate: p.trueFlakyRate,
+      rawFlakyRate: p.flakyRate,
+      coFailureStrength: p.coFailureStrength,
+      hasCoFailureData: p.hasCoFailureData,
+      hasResolver: p.hasResolver,
+      hasGBDTModel: p.hasGBDTModel,
+    },
+    recommendation: {
+      strategy: s.strategy,
+      percentage: s.percentage,
+      holdoutRatio: s.holdout_ratio,
+      coFailureDays: s.co_failure_days,
+    },
+    warnings: [
+      ...(p.confidence === "insufficient" ? ["Insufficient data (< 5 commits). Recommendations are unreliable."] : []),
+      ...(p.confidence === "low" ? [`Low confidence (${p.commitCount} commits). Need 50+ for reliable calibration.`] : []),
+      ...(p.brokenTestCount > 0 ? [`${p.brokenTestCount} test(s) fail 100% of the time — these are broken, not flaky.`] : []),
+      ...(!p.hasCoFailureData ? ["No co-failure data collected. Co-failure strength is a default estimate."] : []),
+    ],
+  };
 }
