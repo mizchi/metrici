@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadConfig } from "../../src/cli/config.js";
-import { detectProfileName, resolveProfile } from "../../src/cli/profile.js";
+import { detectProfileName, resolveProfile, computeAdaptivePercentage } from "../../src/cli/profile.js";
 
 // --- Task 1: ProfileConfig type and TOML parsing ---
 
@@ -249,5 +249,41 @@ describe("resolveProfile", () => {
   it("uses 'weighted' as default strategy when no profile or sampling", () => {
     const result = resolveProfile("nonexistent", undefined, undefined);
     expect(result.strategy).toBe("weighted");
+  });
+});
+
+describe("computeAdaptivePercentage", () => {
+  const defaultOpts = {
+    basePercentage: 30,
+    fnrLow: 0.02,
+    fnrHigh: 0.05,
+    minPercentage: 10,
+    step: 5,
+  };
+
+  it("reduces percentage when FNR is below low threshold", () => {
+    const result = computeAdaptivePercentage(0.01, defaultOpts);
+    expect(result.percentage).toBe(25);
+  });
+
+  it("keeps percentage when FNR is between thresholds", () => {
+    const result = computeAdaptivePercentage(0.03, defaultOpts);
+    expect(result.percentage).toBe(30);
+  });
+
+  it("increases percentage when FNR exceeds high threshold", () => {
+    const result = computeAdaptivePercentage(0.06, { ...defaultOpts, basePercentage: 20 });
+    expect(result.percentage).toBe(25);
+  });
+
+  it("never goes below minPercentage", () => {
+    const result = computeAdaptivePercentage(0.001, { ...defaultOpts, basePercentage: 12, minPercentage: 10 });
+    expect(result.percentage).toBeGreaterThanOrEqual(10);
+  });
+
+  it("returns base percentage when FNR is null (no data)", () => {
+    const result = computeAdaptivePercentage(null, defaultOpts);
+    expect(result.percentage).toBe(30);
+    expect(result.reason).toContain("no data");
   });
 });

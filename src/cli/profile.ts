@@ -1,5 +1,51 @@
 import type { ProfileConfig, SamplingConfig } from "./config.js";
 
+export interface AdaptivePercentageOpts {
+  basePercentage: number;
+  fnrLow: number;
+  fnrHigh: number;
+  minPercentage: number;
+  step: number;
+}
+
+export interface AdaptivePercentageResult {
+  percentage: number;
+  reason: string;
+}
+
+export function computeAdaptivePercentage(
+  falseNegativeRate: number | null,
+  opts: AdaptivePercentageOpts,
+): AdaptivePercentageResult {
+  if (falseNegativeRate == null) {
+    return {
+      percentage: opts.basePercentage,
+      reason: "adaptive: no data, using base percentage",
+    };
+  }
+
+  if (falseNegativeRate < opts.fnrLow) {
+    const reduced = Math.max(opts.minPercentage, opts.basePercentage - opts.step);
+    return {
+      percentage: reduced,
+      reason: `adaptive: FNR ${(falseNegativeRate * 100).toFixed(1)}% < ${(opts.fnrLow * 100).toFixed(0)}% threshold, reduced to ${reduced}%`,
+    };
+  }
+
+  if (falseNegativeRate > opts.fnrHigh) {
+    const increased = opts.basePercentage + opts.step;
+    return {
+      percentage: increased,
+      reason: `adaptive: FNR ${(falseNegativeRate * 100).toFixed(1)}% > ${(opts.fnrHigh * 100).toFixed(0)}% threshold, increased to ${increased}%`,
+    };
+  }
+
+  return {
+    percentage: opts.basePercentage,
+    reason: `adaptive: FNR ${(falseNegativeRate * 100).toFixed(1)}% within target range, keeping ${opts.basePercentage}%`,
+  };
+}
+
 export interface ResolvedProfile {
   name: string;
   strategy: string;
