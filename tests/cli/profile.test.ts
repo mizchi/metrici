@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadConfig } from "../../src/cli/config.js";
 import { detectProfileName, resolveProfile, computeAdaptivePercentage } from "../../src/cli/profile.js";
+import type { AdaptiveSignals } from "../../src/cli/profile.js";
 
 // --- Task 1: ProfileConfig type and TOML parsing ---
 
@@ -262,28 +263,51 @@ describe("computeAdaptivePercentage", () => {
   };
 
   it("reduces percentage when FNR is below low threshold", () => {
-    const result = computeAdaptivePercentage(0.01, defaultOpts);
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.01, divergenceRate: null }, defaultOpts);
     expect(result.percentage).toBe(25);
   });
 
   it("keeps percentage when FNR is between thresholds", () => {
-    const result = computeAdaptivePercentage(0.03, defaultOpts);
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.03, divergenceRate: null }, defaultOpts);
     expect(result.percentage).toBe(30);
   });
 
   it("increases percentage when FNR exceeds high threshold", () => {
-    const result = computeAdaptivePercentage(0.06, { ...defaultOpts, basePercentage: 20 });
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.06, divergenceRate: null }, { ...defaultOpts, basePercentage: 20 });
     expect(result.percentage).toBe(25);
   });
 
   it("never goes below minPercentage", () => {
-    const result = computeAdaptivePercentage(0.001, { ...defaultOpts, basePercentage: 12, minPercentage: 10 });
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.001, divergenceRate: null }, { ...defaultOpts, basePercentage: 12, minPercentage: 10 });
     expect(result.percentage).toBeGreaterThanOrEqual(10);
   });
 
-  it("returns base percentage when FNR is null (no data)", () => {
-    const result = computeAdaptivePercentage(null, defaultOpts);
+  it("returns base percentage when both signals are null (no data)", () => {
+    const result = computeAdaptivePercentage({ falseNegativeRate: null, divergenceRate: null }, defaultOpts);
     expect(result.percentage).toBe(30);
     expect(result.reason).toContain("no data");
+  });
+
+  it("uses divergence rate when FNR is null", () => {
+    const result = computeAdaptivePercentage({ falseNegativeRate: null, divergenceRate: 0.06 }, { ...defaultOpts, basePercentage: 20 });
+    expect(result.percentage).toBe(25);
+    expect(result.reason).toContain("divergence");
+  });
+
+  it("uses worse signal when both present", () => {
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.01, divergenceRate: 0.08 }, { ...defaultOpts, basePercentage: 20 });
+    expect(result.percentage).toBe(25);
+    expect(result.reason).toContain("divergence");
+  });
+
+  it("reduces when both signals are low", () => {
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.005, divergenceRate: 0.01 }, { ...defaultOpts, basePercentage: 30 });
+    expect(result.percentage).toBe(25);
+  });
+
+  it("reason includes both signal values when both present", () => {
+    const result = computeAdaptivePercentage({ falseNegativeRate: 0.03, divergenceRate: 0.04 }, defaultOpts);
+    expect(result.reason).toContain("FNR");
+    expect(result.reason).toContain("divergence");
   });
 });
