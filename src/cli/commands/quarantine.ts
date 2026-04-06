@@ -1,4 +1,36 @@
 import type { MetricStore, QuarantinedTest } from "../storage/types.js";
+import { formatIssueBody } from "../gh.js";
+
+export interface QuarantineIssueInput {
+  suite: string;
+  testName: string;
+  flakyRate: number;
+  totalRuns: number;
+  reason: string;
+}
+
+export interface QuarantineIssueOpts {
+  title: string;
+  body: string;
+  labels: string[];
+}
+
+export function buildQuarantineIssueOpts(input: QuarantineIssueInput): QuarantineIssueOpts {
+  const rawTitle = `[flaker] Quarantined: ${input.suite} > ${input.testName}`;
+  const title = rawTitle.length > 256 ? rawTitle.slice(0, 253) + "..." : rawTitle;
+  const body = formatIssueBody({
+    suite: input.suite,
+    testName: input.testName,
+    flakyRate: input.flakyRate,
+    totalRuns: input.totalRuns,
+    reason: input.reason,
+  });
+  return {
+    title,
+    body,
+    labels: ["flaky-test", "quarantine"],
+  };
+}
 
 export type QuarantineOpts =
   | {
