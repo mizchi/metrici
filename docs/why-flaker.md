@@ -184,6 +184,77 @@ This maps directly to the root cause taxonomy from Luo et al. (2014):
 | Time-dependent | 4% | true-flaky |
 | Other | 6% | varies |
 
+### 6. Execution Pipeline: Three-Tier Feedback System
+
+flaker's execution model is not just sampling at different granularities — it is a feedback control system where each tier's output improves the next tier's decisions.
+
+**Daily (full execution):** Runs all tests and accumulates ground truth history. This builds the co-failure matrix (which tests tend to fail together), per-test flaky rates, and stable baseline data. Without daily runs, CI and local tiers have nothing to calibrate against.
+
+**CI (hybrid sampling):** Uses daily's accumulated data to make informed sampling decisions. Applies adaptive percentage to weight tests by risk. Randomly selects a holdout group (~10% of skipped tests) to measure false negative rate without running everything. The holdout result feeds back into the next CI run's sampling percentage.
+
+**Local (affected + time budget):** Uses the dependency graph to select tests affected by changed files, bounded by a time budget. Because dependency graphs are imperfect, a divergence signal (how often CI and local disagree on which tests are affected) compensates for gaps in the graph.
+
+```
+Daily (full)          →  accumulates history  →  feeds CI sampling quality
+CI (hybrid)           →  selective execution  →  validates via holdout
+Local (affected)      →  fast feedback        →  compensated by divergence signal
+```
+
+Each tier feeds the next. Daily informs CI's sampling weights. CI's holdout FNR drives adaptive percentage. CI's divergence signal compensates for local's dependency graph gaps. The system converges toward the minimum test set needed to maintain quality.
+
+References: Memon et al. (ICSE-SEIP 2017), Machalica et al. (ICSE-SEIP 2019)
+
+### 7. Holdout Verification: Measuring What You Don't Run
+
+When CI samples k tests from n total, the tests that were skipped are invisible. Holdout verification makes them partially visible without running them all.
+
+The mechanism: when selecting which tests to skip, randomly pull ~10% of the skipped pool into a holdout group and run them anyway. These tests were not selected by the sampling algorithm — they are a random control sample of what was about to be skipped.
+
+**Numeric example:**
+- 1000 total tests
+- 300 sampled (by hybrid algorithm)
+- 700 would be skipped
+- 70 selected as holdout (10% of skipped)
+- 630 truly skipped
+
+The holdout false negative rate:
+
+```
+holdout_FNR = holdout_failures / holdout_total
+```
+
+This is an unbiased estimator of the true false negative rate across all skipped tests. With 70 holdout tests, a 95% confidence interval can reliably detect FNR > 4%.
+
+The holdout FNR is the primary input to adaptive percentage adjustment. If holdout tests are failing at high rates, the sampling algorithm is missing important tests and the percentage needs to increase.
+
+### 8. Adaptive Sampling: Dual-Signal Feedback Control
+
+CI sampling quality is controlled by two independent signals. Using only one creates blind spots.
+
+**Signal 1 — Holdout FNR:** Measures whether the sampling algorithm is selecting the right tests. A high FNR means tests that were nearly skipped are failing, so the sample is too narrow. This signal is measured directly from each CI run.
+
+**Signal 2 — Divergence rate:** Measures whether the dependency graph is accurate. Computed as `ciOnlyCount / totalTests` — the fraction of tests that CI ran but local did not consider affected. A high divergence rate means the affected resolver is missing real dependencies.
+
+The two signals measure different failure modes:
+
+| Signal | Measures | Root cause when high |
+|--------|----------|---------------------|
+| Holdout FNR | Wrong tests selected | Sampling weights are stale or miscalibrated |
+| Divergence rate | Dependency graph gaps | Import resolution is incomplete or incorrect |
+
+The adaptive controller takes the worse (higher) of the two signals, applying a conservative strategy:
+
+```
+effectiveRate = max(FNR, divergenceRate)
+if effectiveRate < lowThreshold  → reduce percentage
+if effectiveRate > highThreshold → increase percentage
+otherwise                        → keep current
+```
+
+This is analogous to a proportional controller in control theory: the output (sampling percentage) adjusts proportionally to the error signal (maximum of FNR and divergence).
+
+**Convergence behavior:** With an accurate dependency graph and good historical data, the system converges to 10–15% sampling while maintaining low FNR. With poor dependency data or sparse history, the percentage stays elevated at 30%+ until the signals improve.
+
 ---
 
 ## Probabilistic Behavior
