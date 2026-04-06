@@ -61,8 +61,8 @@ interface CoreAffectedReportOutput {
 }
 
 interface AffectedExplainCoreExports {
-  dedupe_affected_targets_json?: (targetsJson: string) => string;
-  build_affected_report_json?: (
+  dedupe_affected_targets_json: (targetsJson: string) => string;
+  build_affected_report_json: (
     targetsJson: string,
     directSelectionsJson: string,
     transitiveTasksJson: string,
@@ -72,14 +72,6 @@ interface AffectedExplainCoreExports {
 
 function compareNullable(a: string | null, b: string | null): number {
   return (a ?? "").localeCompare(b ?? "");
-}
-
-function affectedTargetKey(target: AffectedTarget): string {
-  return JSON.stringify({
-    spec: target.spec,
-    taskId: target.taskId,
-    filter: target.filter ?? null,
-  });
 }
 
 export function sortAffectedSelections(
@@ -135,96 +127,6 @@ export function buildAffectedReport(
       unmatchedCount: sortedUnmatched.length,
     },
   };
-}
-
-function dedupeAffectedTargetsFallback(
-  targets: AffectedTarget[],
-): AffectedTarget[] {
-  const byKey = new Map<string, AffectedTarget>();
-  for (const target of targets) {
-    const key = affectedTargetKey(target);
-    if (!byKey.has(key)) {
-      byKey.set(key, {
-        spec: target.spec,
-        taskId: target.taskId,
-        filter: target.filter ?? null,
-      });
-    }
-  }
-  return [...byKey.values()].sort((a, b) => {
-    const bySpec = a.spec.localeCompare(b.spec);
-    if (bySpec !== 0) return bySpec;
-    const byTaskId = a.taskId.localeCompare(b.taskId);
-    if (byTaskId !== 0) return byTaskId;
-    return compareNullable(a.filter, b.filter);
-  });
-}
-
-function buildAffectedReportFromInputsFallback(opts: {
-  resolver: string;
-  changedFiles: string[];
-  targets: AffectedTarget[];
-  directSelections: AffectedDirectSelectionInput[];
-  transitiveTasks?: AffectedTransitiveTaskInput[];
-  unmatched: string[];
-}): AffectedReport {
-  const targets = dedupeAffectedTargetsFallback(opts.targets);
-  const directSelections = opts.directSelections.map((entry) =>
-    createAffectedSelection(entry.target, {
-      direct: true,
-      matchedPaths: entry.matchedPaths,
-      matchReasons: entry.matchReasons,
-    })
-  );
-  const directKeys = new Set(directSelections.map((entry) => affectedTargetKey(entry)));
-  const transitiveByTask = new Map<string, AffectedTransitiveTaskInput>();
-  for (const task of opts.transitiveTasks ?? []) {
-    const existing = transitiveByTask.get(task.taskId);
-    if (!existing) {
-      transitiveByTask.set(task.taskId, {
-        taskId: task.taskId,
-        includedBy: [...(task.includedBy ?? [])],
-        matchReasons: [...(task.matchReasons ?? [])],
-      });
-      continue;
-    }
-    for (const parent of task.includedBy ?? []) {
-      if (!(existing.includedBy ?? []).includes(parent)) {
-        existing.includedBy ??= [];
-        existing.includedBy.push(parent);
-      }
-    }
-    for (const reason of task.matchReasons ?? []) {
-      if (!(existing.matchReasons ?? []).includes(reason)) {
-        existing.matchReasons ??= [];
-        existing.matchReasons.push(reason);
-      }
-    }
-  }
-
-  const transitiveSelections = targets.flatMap((target) => {
-    if (directKeys.has(affectedTargetKey(target))) {
-      return [];
-    }
-    const task = transitiveByTask.get(target.taskId);
-    if (!task) {
-      return [];
-    }
-    return [
-      createAffectedSelection(target, {
-        direct: false,
-        includedBy: task.includedBy,
-        matchReasons: task.matchReasons,
-      }),
-    ];
-  });
-
-  return buildAffectedReport(
-    opts.resolver,
-    opts.changedFiles,
-    [...directSelections, ...transitiveSelections],
-    opts.unmatched,
-  );
 }
 
 function toCoreTarget(target: AffectedTarget): CoreAffectedTargetInput {
@@ -296,46 +198,29 @@ function fromCoreReport(
   };
 }
 
-let affectedExplainCorePromise:
-  | Promise<AffectedExplainCoreExports | null>
-  | undefined;
-
-async function loadAffectedExplainCore(): Promise<AffectedExplainCoreExports | null> {
-  if (!affectedExplainCorePromise) {
-    affectedExplainCorePromise = (async () => {
-      try {
-        const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as AffectedExplainCoreExports;
-        if (
-          typeof mod.dedupe_affected_targets_json === "function" &&
-          typeof mod.build_affected_report_json === "function"
-        ) {
-          return mod;
-        }
-      } catch {
-        // Fall back to TypeScript implementation when MoonBit build is unavailable.
-      }
-      return null;
-    })();
+const affectedExplainCore = await (async (): Promise<AffectedExplainCoreExports> => {
+  const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as Partial<AffectedExplainCoreExports>;
+  if (
+    typeof mod.dedupe_affected_targets_json === "function" &&
+    typeof mod.build_affected_report_json === "function"
+  ) {
+    return mod as AffectedExplainCoreExports;
   }
-  return affectedExplainCorePromise;
-}
+  throw new Error("MoonBit affected_explain bridge is missing. Run 'moon build --target js' first.");
+})();
 
 export async function dedupeAffectedTargets(
   targets: AffectedTarget[],
 ): Promise<AffectedTarget[]> {
-  const core = await loadAffectedExplainCore();
-  if (core?.dedupe_affected_targets_json) {
-    return JSON.parse(
-      core.dedupe_affected_targets_json(
-        JSON.stringify(targets.map(toCoreTarget)),
-      ),
-    ).map((target: CoreAffectedTargetInput) => ({
-      spec: target.spec,
-      taskId: target.task_id,
-      filter: target.filter ?? null,
-    }));
-  }
-  return dedupeAffectedTargetsFallback(targets);
+  return JSON.parse(
+    affectedExplainCore.dedupe_affected_targets_json(
+      JSON.stringify(targets.map(toCoreTarget)),
+    ),
+  ).map((target: CoreAffectedTargetInput) => ({
+    spec: target.spec,
+    taskId: target.task_id,
+    filter: target.filter ?? null,
+  }));
 }
 
 export async function buildAffectedReportFromInputs(opts: {
@@ -346,18 +231,13 @@ export async function buildAffectedReportFromInputs(opts: {
   transitiveTasks?: AffectedTransitiveTaskInput[];
   unmatched: string[];
 }): Promise<AffectedReport> {
-  const core = await loadAffectedExplainCore();
-  if (core?.build_affected_report_json) {
-    const report = JSON.parse(
-      core.build_affected_report_json(
-        JSON.stringify(opts.targets.map(toCoreTarget)),
-        JSON.stringify(opts.directSelections.map(toCoreDirectSelection)),
-        JSON.stringify((opts.transitiveTasks ?? []).map(toCoreTransitiveTask)),
-        JSON.stringify(opts.unmatched),
-      ),
-    ) as CoreAffectedReportOutput;
-    return fromCoreReport(opts.resolver, opts.changedFiles, report);
-  }
-
-  return buildAffectedReportFromInputsFallback(opts);
+  const report = JSON.parse(
+    affectedExplainCore.build_affected_report_json(
+      JSON.stringify(opts.targets.map(toCoreTarget)),
+      JSON.stringify(opts.directSelections.map(toCoreDirectSelection)),
+      JSON.stringify((opts.transitiveTasks ?? []).map(toCoreTransitiveTask)),
+      JSON.stringify(opts.unmatched),
+    ),
+  ) as CoreAffectedReportOutput;
+  return fromCoreReport(opts.resolver, opts.changedFiles, report);
 }

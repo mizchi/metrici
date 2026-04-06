@@ -88,7 +88,7 @@ interface QuarantineEntryInput {
 }
 
 interface QuarantineMatchExports {
-  find_matching_quarantine_json?: (
+  find_matching_quarantine_json: (
     entriesJson: string,
     taskId: string,
     spec: string,
@@ -315,35 +315,6 @@ export function validateQuarantineManifest(
   };
 }
 
-function matchesManifestEntry(
-  entry: QuarantineManifestEntry,
-  selector: QuarantineManifestSelector,
-  opts?: FindMatchingManifestEntryOpts,
-): boolean {
-  if (opts?.modes && !opts.modes.includes(entry.mode)) {
-    return false;
-  }
-
-  const resolved = resolveTestIdentity({
-    suite: selector.suite,
-    testName: selector.testName,
-    taskId: selector.taskId,
-  });
-
-  if (entry.taskId !== resolved.taskId) {
-    return false;
-  }
-  if (normalizeSpecPath(entry.spec) !== normalizeSpecPath(resolved.suite)) {
-    return false;
-  }
-
-  try {
-    return new RegExp(entry.titlePattern).test(resolved.testName);
-  } catch {
-    return false;
-  }
-}
-
 function toCoreEntry(entry: QuarantineManifestEntry): QuarantineEntryInput {
   return {
     id: entry.id,
@@ -361,44 +332,37 @@ function toCoreEntry(entry: QuarantineManifestEntry): QuarantineEntryInput {
   };
 }
 
-async function loadManifestMatcher(): Promise<
+const findMatchingManifestEntryImpl = await (async (): Promise<
   (
     entries: QuarantineManifestEntry[],
     selector: QuarantineManifestSelector,
     opts?: FindMatchingManifestEntryOpts,
   ) => QuarantineManifestEntry | undefined
-> {
-  try {
-    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as QuarantineMatchExports;
-    if (typeof mod.find_matching_quarantine_json === "function") {
-      return (entries, selector, opts) => {
-        const filteredEntries = opts?.modes
-          ? entries.filter((entry) => opts.modes!.includes(entry.mode))
-          : entries;
-        const resolved = resolveTestIdentity({
-          suite: selector.suite,
-          testName: selector.testName,
-          taskId: selector.taskId,
-        });
-        const matchedIndex = JSON.parse(
-          mod.find_matching_quarantine_json!(
-            JSON.stringify(filteredEntries.map(toCoreEntry)),
-            resolved.taskId,
-            normalizeSpecPath(resolved.suite),
-            resolved.testName,
-          ),
-        ) as number;
-        return matchedIndex >= 0 ? filteredEntries[matchedIndex] : undefined;
-      };
-    }
-  } catch {
-    // MoonBit JS build not available, fall back to TS implementation.
+> => {
+  const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as QuarantineMatchExports;
+  if (typeof mod.find_matching_quarantine_json !== "function") {
+    throw new Error("MoonBit quarantine bridge is missing. Run 'moon build --target js' first.");
   }
-  return (entries, selector, opts) =>
-    entries.find((entry) => matchesManifestEntry(entry, selector, opts));
-}
-
-const findMatchingManifestEntryImpl = await loadManifestMatcher();
+  return (entries, selector, opts) => {
+    const filteredEntries = opts?.modes
+      ? entries.filter((entry) => opts.modes!.includes(entry.mode))
+      : entries;
+    const resolved = resolveTestIdentity({
+      suite: selector.suite,
+      testName: selector.testName,
+      taskId: selector.taskId,
+    });
+    const matchedIndex = JSON.parse(
+      mod.find_matching_quarantine_json(
+        JSON.stringify(filteredEntries.map(toCoreEntry)),
+        resolved.taskId,
+        normalizeSpecPath(resolved.suite),
+        resolved.testName,
+      ),
+    ) as number;
+    return matchedIndex >= 0 ? filteredEntries[matchedIndex] : undefined;
+  };
+})();
 
 export function findMatchingManifestEntry(
   entries: QuarantineManifestEntry[],

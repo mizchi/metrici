@@ -24,4 +24,3 @@ export function getAdapter(name: string): GraphAdapter {
 }
 
 export * from "./types.js";
-export * from "./analyzer.js";

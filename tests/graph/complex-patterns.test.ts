@@ -1,11 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import type { DependencyGraph, GraphNode } from "../../src/cli/graph/types.js";
-import {
-  topologicalSort,
-  findAffectedNodes,
-  expandTransitive,
-  buildReverseDeps,
-} from "../../src/cli/graph/analyzer.js";
+import { loadCore, type MetriciCore } from "../../src/cli/core/loader.js";
+
+let core: MetriciCore;
 
 function makeGraph(nodes: GraphNode[]): DependencyGraph {
   const map = new Map<string, GraphNode>();
@@ -23,9 +20,12 @@ function node(id: string, deps: string[] = [], path?: string): GraphNode {
   };
 }
 
-describe("Complex graph patterns", () => {
+beforeAll(async () => {
+  core = await loadCore();
+});
+
+describe("Complex graph patterns (MoonBit bridge)", () => {
   describe("Diamond dependency (A → B,C → D)", () => {
-    // A depends on B and C, both depend on D
     const graph = makeGraph([
       node("A", ["B", "C"]),
       node("B", ["D"]),
@@ -34,7 +34,7 @@ describe("Complex graph patterns", () => {
     ]);
 
     it("topological sort: D before B,C before A", () => {
-      const order = topologicalSort(graph);
+      const order = core.topologicalSort(graph);
       const idx = (id: string) => order.indexOf(id);
       expect(idx("D")).toBeLessThan(idx("B"));
       expect(idx("D")).toBeLessThan(idx("C"));
@@ -43,7 +43,7 @@ describe("Complex graph patterns", () => {
     });
 
     it("change in D affects all nodes", () => {
-      const affected = findAffectedNodes(graph, ["D/src/core.ts"]);
+      const affected = core.findAffectedNodes(graph, ["D/src/core.ts"]);
       expect(affected).toContain("D");
       expect(affected).toContain("B");
       expect(affected).toContain("C");
@@ -52,7 +52,7 @@ describe("Complex graph patterns", () => {
     });
 
     it("change in B affects only B and A", () => {
-      const affected = findAffectedNodes(graph, ["B/src/util.ts"]);
+      const affected = core.findAffectedNodes(graph, ["B/src/util.ts"]);
       expect(affected).toContain("B");
       expect(affected).toContain("A");
       expect(affected).not.toContain("C");
@@ -69,10 +69,9 @@ describe("Complex graph patterns", () => {
       node("E"),
     ]);
 
-    it("topological sort: E, D, C, B, A", () => {
-      const order = topologicalSort(graph);
+    it("topological sort respects all dependencies", () => {
+      const order = core.topologicalSort(graph);
       for (let i = 0; i < order.length - 1; i++) {
-        // Each node should come after its dependencies
         const current = graph.nodes.get(order[i])!;
         for (const dep of current.dependencies) {
           expect(order.indexOf(dep)).toBeLessThan(i);
@@ -81,12 +80,12 @@ describe("Complex graph patterns", () => {
     });
 
     it("change in E propagates through entire chain", () => {
-      const affected = findAffectedNodes(graph, ["E/src/base.ts"]);
+      const affected = core.findAffectedNodes(graph, ["E/src/base.ts"]);
       expect(affected).toHaveLength(5);
     });
 
     it("change in C affects C, B, A only", () => {
-      const affected = findAffectedNodes(graph, ["C/src/mid.ts"]);
+      const affected = core.findAffectedNodes(graph, ["C/src/mid.ts"]);
       expect(affected).toEqual(expect.arrayContaining(["C", "B", "A"]));
       expect(affected).not.toContain("D");
       expect(affected).not.toContain("E");
@@ -104,18 +103,18 @@ describe("Complex graph patterns", () => {
     ]);
 
     it("topological sort: sink first, root last", () => {
-      const order = topologicalSort(graph);
+      const order = core.topologicalSort(graph);
       expect(order[0]).toBe("sink");
       expect(order[order.length - 1]).toBe("root");
     });
 
     it("change in sink affects everything", () => {
-      const affected = findAffectedNodes(graph, ["sink/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["sink/src/x.ts"]);
       expect(affected).toHaveLength(6);
     });
 
     it("change in A affects only A and root", () => {
-      const affected = findAffectedNodes(graph, ["A/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["A/src/x.ts"]);
       expect(affected).toHaveLength(2);
       expect(affected).toContain("A");
       expect(affected).toContain("root");
@@ -130,18 +129,17 @@ describe("Complex graph patterns", () => {
     ]);
 
     it("topological sort returns all nodes", () => {
-      const order = topologicalSort(graph);
+      const order = core.topologicalSort(graph);
       expect(order).toHaveLength(3);
     });
 
     it("change in X affects only X", () => {
-      const affected = findAffectedNodes(graph, ["X/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["X/src/x.ts"]);
       expect(affected).toEqual(["X"]);
     });
 
-    it("reverse deps map is empty", () => {
-      const reverse = buildReverseDeps(graph);
-      // No node depends on another, so all arrays should be empty or absent
+    it("reverse deps map is empty for isolated nodes", () => {
+      const reverse = core.buildReverseDeps(graph);
       for (const [_, deps] of reverse) {
         expect(deps).toHaveLength(0);
       }
@@ -149,29 +147,27 @@ describe("Complex graph patterns", () => {
   });
 
   describe("Multiple roots", () => {
-    // Two independent trees sharing a leaf
     const graph = makeGraph([
       node("app1", ["shared"]),
       node("app2", ["shared"]),
       node("shared", ["core"]),
       node("core"),
-      node("standalone"),  // completely independent
+      node("standalone"),
     ]);
 
     it("change in core affects core, shared, app1, app2", () => {
-      const affected = findAffectedNodes(graph, ["core/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["core/src/x.ts"]);
       expect(affected).toHaveLength(4);
       expect(affected).not.toContain("standalone");
     });
 
     it("change in standalone affects only standalone", () => {
-      const affected = findAffectedNodes(graph, ["standalone/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["standalone/src/x.ts"]);
       expect(affected).toEqual(["standalone"]);
     });
   });
 
   describe("Cycle detection", () => {
-    // A → B → C → A (cycle)
     const graph = makeGraph([
       node("A", ["B"]),
       node("B", ["C"]),
@@ -179,20 +175,17 @@ describe("Complex graph patterns", () => {
     ]);
 
     it("topological sort handles cycles without infinite loop", () => {
-      // Should still return all nodes (visited set prevents infinite recursion)
-      const order = topologicalSort(graph);
+      const order = core.topologicalSort(graph);
       expect(order).toHaveLength(3);
     });
 
     it("affected expansion handles cycles without infinite loop", () => {
-      const affected = findAffectedNodes(graph, ["A/src/x.ts"]);
-      // All nodes in cycle should be affected
+      const affected = core.findAffectedNodes(graph, ["A/src/x.ts"]);
       expect(affected).toHaveLength(3);
     });
   });
 
-  describe("Large graph (20 nodes, mixed patterns)", () => {
-    // Build a realistic-ish monorepo graph
+  describe("Large graph (20 nodes)", () => {
     const nodes: GraphNode[] = [
       node("core"),
       node("utils", ["core"]),
@@ -218,7 +211,7 @@ describe("Complex graph patterns", () => {
     const graph = makeGraph(nodes);
 
     it("topological sort respects all dependencies", () => {
-      const order = topologicalSort(graph);
+      const order = core.topologicalSort(graph);
       expect(order).toHaveLength(20);
       for (const n of nodes) {
         const idx = order.indexOf(n.id);
@@ -229,25 +222,23 @@ describe("Complex graph patterns", () => {
     });
 
     it("change in core affects most nodes", () => {
-      const affected = findAffectedNodes(graph, ["core/src/x.ts"]);
-      // core is a root dependency, should affect almost everything
+      const affected = core.findAffectedNodes(graph, ["core/src/x.ts"]);
       expect(affected.length).toBeGreaterThan(15);
     });
 
     it("change in reporting affects only reporting", () => {
-      const affected = findAffectedNodes(graph, ["reporting/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["reporting/src/x.ts"]);
       expect(affected).toEqual(["reporting"]);
     });
 
     it("change in auth affects auth + dependents", () => {
-      const affected = findAffectedNodes(graph, ["auth/src/x.ts"]);
+      const affected = core.findAffectedNodes(graph, ["auth/src/x.ts"]);
       expect(affected).toContain("auth");
       expect(affected).toContain("api");
       expect(affected).toContain("notifications");
       expect(affected).toContain("payments");
-      // Transitive: api → web-app, mobile-app, admin, cli, sdk, etc.
       expect(affected).toContain("web-app");
-      expect(affected).not.toContain("core");  // core is upstream, not downstream
+      expect(affected).not.toContain("core");
     });
   });
 });

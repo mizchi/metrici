@@ -1,12 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import type { DependencyGraph, GraphNode } from "../../src/cli/graph/types.js";
-import {
-  findAffectedNodes,
-  expandTransitive,
-  topologicalSort,
-  getAffectedTestPatterns,
-  buildReverseDeps,
-} from "../../src/cli/graph/analyzer.js";
+import { loadCore, type MetriciCore } from "../../src/cli/core/loader.js";
+
+let core: MetriciCore;
 
 function makeNode(partial: Partial<GraphNode> & { id: string }): GraphNode {
   return {
@@ -24,13 +20,17 @@ function makeGraph(nodes: GraphNode[], rootDir = "/root"): DependencyGraph {
   return { nodes: map, rootDir };
 }
 
-describe("findAffectedNodes", () => {
+beforeAll(async () => {
+  core = await loadCore();
+});
+
+describe("findAffectedNodes (MoonBit bridge)", () => {
   it("finds directly affected nodes by file path", () => {
     const graph = makeGraph([
       makeNode({ id: "pkg-a", path: "packages/a" }),
       makeNode({ id: "pkg-b", path: "packages/b" }),
     ]);
-    const result = findAffectedNodes(graph, ["packages/a/src/index.ts"]);
+    const result = core.findAffectedNodes(graph, ["packages/a/src/index.ts"]);
     expect(result).toEqual(["pkg-a"]);
   });
 
@@ -43,8 +43,7 @@ describe("findAffectedNodes", () => {
         dependencies: ["core"],
       }),
     ]);
-    // Change in core should affect both core and app
-    const result = findAffectedNodes(graph, ["packages/core/src/lib.ts"]);
+    const result = core.findAffectedNodes(graph, ["packages/core/src/lib.ts"]);
     expect(result.sort()).toEqual(["app", "core"]);
   });
 
@@ -54,18 +53,18 @@ describe("findAffectedNodes", () => {
       makeNode({ id: "b", path: "b", dependencies: ["a"] }),
       makeNode({ id: "c", path: "c", dependencies: ["b"] }),
     ]);
-    const result = findAffectedNodes(graph, ["a/index.ts"]);
+    const result = core.findAffectedNodes(graph, ["a/index.ts"]);
     expect(result.sort()).toEqual(["a", "b", "c"]);
   });
 
   it("returns empty for no matches", () => {
     const graph = makeGraph([makeNode({ id: "x", path: "packages/x" })]);
-    const result = findAffectedNodes(graph, ["unrelated/file.ts"]);
+    const result = core.findAffectedNodes(graph, ["unrelated/file.ts"]);
     expect(result).toEqual([]);
   });
 });
 
-describe("expandTransitive", () => {
+describe("expandTransitive (MoonBit bridge)", () => {
   it("follows reverse dependencies", () => {
     const graph = makeGraph([
       makeNode({ id: "lib", path: "lib" }),
@@ -73,34 +72,33 @@ describe("expandTransitive", () => {
       makeNode({ id: "app2", path: "app2", dependencies: ["lib"] }),
       makeNode({ id: "unrelated", path: "other" }),
     ]);
-    const result = expandTransitive(graph, new Set(["lib"]));
+    const result = core.expandTransitive(graph, new Set(["lib"]));
     expect(result.sort()).toEqual(["app1", "app2", "lib"]);
   });
 });
 
-describe("buildReverseDeps", () => {
+describe("buildReverseDeps (MoonBit bridge)", () => {
   it("builds correct reverse dependency map", () => {
     const graph = makeGraph([
       makeNode({ id: "a", path: "a" }),
       makeNode({ id: "b", path: "b", dependencies: ["a"] }),
       makeNode({ id: "c", path: "c", dependencies: ["a", "b"] }),
     ]);
-    const reverse = buildReverseDeps(graph);
+    const reverse = core.buildReverseDeps(graph);
     expect(reverse.get("a")?.sort()).toEqual(["b", "c"]);
     expect(reverse.get("b")).toEqual(["c"]);
     expect(reverse.has("c")).toBe(false);
   });
 });
 
-describe("topologicalSort", () => {
+describe("topologicalSort (MoonBit bridge)", () => {
   it("produces valid topological order", () => {
     const graph = makeGraph([
       makeNode({ id: "c", path: "c", dependencies: ["b"] }),
       makeNode({ id: "a", path: "a" }),
       makeNode({ id: "b", path: "b", dependencies: ["a"] }),
     ]);
-    const result = topologicalSort(graph);
-    // a must come before b, b must come before c
+    const result = core.topologicalSort(graph);
     expect(result.indexOf("a")).toBeLessThan(result.indexOf("b"));
     expect(result.indexOf("b")).toBeLessThan(result.indexOf("c"));
   });
@@ -110,12 +108,12 @@ describe("topologicalSort", () => {
       makeNode({ id: "x", path: "x" }),
       makeNode({ id: "y", path: "y" }),
     ]);
-    const result = topologicalSort(graph);
+    const result = core.topologicalSort(graph);
     expect(result.sort()).toEqual(["x", "y"]);
   });
 });
 
-describe("getAffectedTestPatterns", () => {
+describe("getAffectedTestPatterns (MoonBit bridge)", () => {
   it("collects test patterns from affected nodes", () => {
     const graph = makeGraph([
       makeNode({
@@ -130,7 +128,7 @@ describe("getAffectedTestPatterns", () => {
       }),
       makeNode({ id: "c", path: "c", testPatterns: ["c/tests/**/*.test.ts"] }),
     ]);
-    const result = getAffectedTestPatterns(graph, ["a", "b"]);
+    const result = core.getAffectedTestPatterns(graph, ["a", "b"]);
     expect(result).toEqual([
       "a/tests/**/*.test.ts",
       "b/tests/**/*.test.ts",
@@ -142,17 +140,17 @@ describe("getAffectedTestPatterns", () => {
     const graph = makeGraph([
       makeNode({ id: "a", path: "a", testPatterns: ["a/**/*.test.ts"] }),
     ]);
-    const result = getAffectedTestPatterns(graph, []);
+    const result = core.getAffectedTestPatterns(graph, []);
     expect(result).toEqual([]);
   });
 });
 
-describe("empty graph", () => {
+describe("empty graph (MoonBit bridge)", () => {
   it("returns empty results for all operations", () => {
     const graph = makeGraph([]);
-    expect(findAffectedNodes(graph, ["any/file.ts"])).toEqual([]);
-    expect(expandTransitive(graph, new Set())).toEqual([]);
-    expect(topologicalSort(graph)).toEqual([]);
-    expect(getAffectedTestPatterns(graph, [])).toEqual([]);
+    expect(core.findAffectedNodes(graph, ["any/file.ts"])).toEqual([]);
+    expect(core.expandTransitive(graph, new Set())).toEqual([]);
+    expect(core.topologicalSort(graph)).toEqual([]);
+    expect(core.getAffectedTestPatterns(graph, [])).toEqual([]);
   });
 });
