@@ -1425,6 +1425,32 @@ program
     process.exit(report.overallScore >= 80 ? 0 : 1);
   });
 
+// --- eval-co-failure-window ---
+program
+  .command("eval-co-failure-window")
+  .description("Analyze co-failure data across different time windows")
+  .option("--windows <list>", "Comma-separated window sizes in days", "7,14,30,60,90,180")
+  .option("--min-co-runs <n>", "Minimum co-runs threshold", "3")
+  .option("--json", "Output JSON report")
+  .action(async (opts: { windows?: string; minCoRuns?: string; json?: boolean }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const { analyzeCoFailureWindows, formatCoFailureWindowReport } = await import("./commands/co-failure-window.js");
+      const windows = opts.windows?.split(",").map((w) => parseInt(w.trim(), 10));
+      const minCoRuns = parseInt(opts.minCoRuns ?? "3", 10);
+      const report = await analyzeCoFailureWindows(store, windows, minCoRuns);
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(formatCoFailureWindowReport(report));
+      }
+    } finally {
+      await store.close();
+    }
+  });
+
 // --- eval-fixture ---
 program
   .command("eval-fixture")

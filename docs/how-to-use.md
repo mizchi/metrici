@@ -488,3 +488,16 @@ flaker diagnose --suite "tests/auth.test.ts" --test "login flow" --runs 5
 
 ミューテーションベースでフレーキー原因を特定する（順序依存、環境依存、非決定性）。
 詳細は [Diagnose Flaky Tests](diagnose.md) を参照。
+
+### Co-failure Window Analysis
+
+```bash
+# Analyze optimal co-failure time window
+flaker eval-co-failure-window
+
+# JSON output
+flaker eval-co-failure-window --json
+```
+
+co-failure データの最適な時間窓（7/14/30/60/90/180 日）を探索する。
+出力の ★ 付きの窓サイズを `--co-failure-days` に指定する。
