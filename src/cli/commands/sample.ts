@@ -241,6 +241,13 @@ async function selectByStrategy(
     };
   }
 
+  if (opts.mode === "full") {
+    return {
+      sampled: allTests,
+      effectiveMode: "full",
+    };
+  }
+
   if (opts.mode === "weighted") {
     return {
       sampled: core.sampleWeighted(allTests, count, seed),
