@@ -42,7 +42,9 @@ import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
   formatQuarantineTable,
+  buildQuarantineIssueOpts,
 } from "./commands/quarantine.js";
+import { isGhAvailable, createGhIssue } from "./gh.js";
 import {
   runEval,
   formatEvalReport,
@@ -67,6 +69,7 @@ import {
 } from "./commands/check.js";
 import {
   createReportSummaryArtifact,
+  formatPrComment,
   formatReportAggregate,
   formatReportDiff,
   formatReportSummary,
@@ -845,6 +848,7 @@ reportCommand
   .option("--meta <pairs>", "Comma-separated extra metadata (key=value)")
   .option("--json", "Output JSON report")
   .option("--markdown", "Output Markdown report")
+  .option("--pr-comment", "Output compact Markdown for PR comments")
   .action(
     (opts: {
       adapter: string;
@@ -859,9 +863,11 @@ reportCommand
       meta?: string;
       json?: boolean;
       markdown?: boolean;
+      prComment?: boolean;
     }) => {
-      if (opts.json && opts.markdown) {
-        console.error("Error: choose either --json or --markdown");
+      const formatCount = [opts.json, opts.markdown, opts.prComment].filter(Boolean).length;
+      if (formatCount > 1) {
+        console.error("Error: choose one of --json, --markdown, or --pr-comment");
         process.exit(1);
       }
       if (opts.bundle && opts.markdown) {
@@ -889,6 +895,10 @@ reportCommand
             2,
           ),
         );
+        return;
+      }
+      if (opts.prComment) {
+        console.log(formatPrComment(summary));
         return;
       }
       console.log(
@@ -992,8 +1002,9 @@ const quarantineCommand = program
     "Remove a test from quarantine (suite:testName)",
   )
   .option("--auto", "Auto-quarantine tests exceeding flaky threshold")
+  .option("--create-issues", "Create GitHub issues for newly quarantined tests (requires gh CLI)")
   .action(
-    async (opts: { add?: string; remove?: string; auto?: boolean }) => {
+    async (opts: { add?: string; remove?: string; auto?: boolean; createIssues?: boolean }) => {
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
@@ -1034,6 +1045,42 @@ const quarantineCommand = program
           );
           if (quarantined.length > 0) {
             console.log(formatQuarantineTable(quarantined));
+          }
+          if (opts.createIssues) {
+            if (!isGhAvailable()) {
+              console.error("Warning: gh CLI not found. Skipping issue creation.");
+              console.error("Install: https://cli.github.com/");
+            } else if (quarantined.length > 0) {
+              const flaky = await store.queryFlakyTests({ windowDays: 30 });
+              let created = 0;
+              for (const q of quarantined) {
+                const flakyInfo = flaky.find(
+                  (f) => f.suite === q.suite && f.testName === q.testName,
+                );
+                const issueInput = {
+                  suite: q.suite,
+                  testName: q.testName,
+                  flakyRate: flakyInfo?.flakyRate ?? 0,
+                  totalRuns: flakyInfo?.totalRuns ?? 0,
+                  reason: q.reason,
+                };
+                const issueOpts = buildQuarantineIssueOpts(issueInput);
+                const repo = `${config.repo.owner}/${config.repo.name}`;
+                const url = createGhIssue({
+                  title: issueOpts.title,
+                  body: issueOpts.body,
+                  labels: issueOpts.labels,
+                  repo,
+                });
+                if (url) {
+                  console.log(`  Created issue: ${url}`);
+                  created++;
+                }
+              }
+              if (created > 0) {
+                console.log(`Created ${created} issue(s) for quarantined tests.`);
+              }
+            }
           }
         } else {
           const result = await runQuarantine({ store, action: "list" });
