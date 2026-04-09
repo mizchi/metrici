@@ -1,4 +1,5 @@
 import type { ProfileConfig, SamplingConfig } from "./config.js";
+import { parseSamplingMode, type SamplingMode } from "./commands/sampling-options.js";
 
 export interface TimeBudgetResult<T> {
   selected: T[];
@@ -133,6 +134,14 @@ export interface ResolvedProfile {
   adaptive_step: number;
   max_duration_seconds?: number;
   fallback_strategy?: string;
+}
+
+export function resolveFallbackSamplingMode(
+  profile: Pick<ResolvedProfile, "fallback_strategy">,
+): SamplingMode | undefined {
+  return profile.fallback_strategy
+    ? parseSamplingMode(profile.fallback_strategy)
+    : undefined;
 }
 
 const ADAPTIVE_DEFAULTS = {

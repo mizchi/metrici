@@ -4,7 +4,14 @@ import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Octokit } from "@octokit/rest";
-import { loadConfig, writeSamplingConfig, type SamplingConfig, type FlakerConfig } from "./config.js";
+import {
+  loadConfig,
+  loadConfigWithDiagnostics,
+  resolveActrunWorkflowPath,
+  writeSamplingConfig,
+  type SamplingConfig,
+  type FlakerConfig,
+} from "./config.js";
 import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
@@ -47,8 +54,9 @@ import {
 import { isGhAvailable, createGhIssue } from "./gh.js";
 import {
   runEval,
-  formatEvalReport,
+  renderEvalReport,
   runSamplingKpi,
+  writeEvalReport,
 } from "./commands/eval.js";
 import { runReason, formatReasoningReport } from "./commands/reason.js";
 import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
@@ -62,6 +70,7 @@ import {
   formatAffectedReport,
 } from "./commands/affected.js";
 import {
+  appendConfigWarnings,
   discoverTestSpecsForCheck,
   formatConfigCheckReport,
   loadTaskDefinitionsForCheck,
@@ -92,7 +101,13 @@ import {
   resolveQuarantineManifestPath,
   validateQuarantineManifest,
 } from "./quarantine-manifest.js";
-import { detectProfileName, resolveProfile, computeAdaptivePercentage, type ResolvedProfile } from "./profile.js";
+import {
+  detectProfileName,
+  resolveProfile,
+  computeAdaptivePercentage,
+  resolveFallbackSamplingMode,
+  type ResolvedProfile,
+} from "./profile.js";
 import { computeKpi } from "./commands/kpi.js";
 import { runInsights } from "./commands/insights.js";
 import { parseConfirmTarget, formatConfirmResult } from "./commands/confirm.js";
@@ -512,9 +527,11 @@ addSamplingOptions(
         }
 
         const kpi = await runSamplingKpi({ store });
+        const fallbackMode = resolveFallbackSamplingMode(opts.resolvedProfile);
         const samplePlan = await planSample({
           store,
           mode,
+          fallbackMode,
           count: opts.count,
           percentage: opts.percentage,
           skipQuarantined: opts.skipQuarantined,
@@ -584,7 +601,10 @@ addSamplingOptions(
             : undefined;
         if (opts.runner === "actrun") {
           const actRunner = new ActrunRunner({
-            workflow: config.runner.command,
+            workflow: resolveActrunWorkflowPath(config),
+            job: config.runner.actrun?.job,
+            local: config.runner.actrun?.local,
+            trust: config.runner.actrun?.trust,
           });
           if (opts.retry) {
             actRunner.retry();
@@ -639,6 +659,7 @@ addSamplingOptions(
         }
         const commitSha = resolveCurrentCommitSha(cwd) ?? `local-${Date.now()}`;
         const kpi = await runSamplingKpi({ store });
+        const fallbackMode = resolveFallbackSamplingMode(opts.resolvedProfile);
 
         // Adaptive percentage adjustment
         const profile = opts.resolvedProfile;
@@ -673,6 +694,7 @@ addSamplingOptions(
           store,
           runner: createRunner(config.runner),
           mode,
+          fallbackMode,
           count: opts.count,
           percentage: opts.percentage,
           resolver,
@@ -810,7 +832,7 @@ program
     }
 
     const cwd = process.cwd();
-    const config = loadConfig(cwd);
+    const { config, warnings: configWarnings } = loadConfigWithDiagnostics(cwd);
     const listedTests = await listRunnerTests(cwd, config.runner);
     const discoveredSpecs = discoverTestSpecsForCheck(cwd, config.runner.type);
     const taskDefinitions = loadTaskDefinitionsForCheck({
@@ -819,11 +841,11 @@ program
       resolverConfig: config.affected.config,
     });
 
-    const report = runConfigCheck({
+    const report = appendConfigWarnings(runConfigCheck({
       listedTests,
       discoveredSpecs,
       taskDefinitions,
-    });
+    }), configWarnings);
     console.log(
       formatConfigCheckReport(report, opts.json ? "json" : "markdown"),
     );
@@ -1207,7 +1229,8 @@ program
   .option("--window <days>", "Analysis window in days")
   .option("--json", "Output raw JSON report")
   .option("--markdown", "Output markdown review report")
-  .action(async (opts: { window?: string; json?: boolean; markdown?: boolean }) => {
+  .option("--output <file>", "Write eval report to a file")
+  .action(async (opts: { window?: string; json?: boolean; markdown?: boolean; output?: string }) => {
     if (opts.json && opts.markdown) {
       console.error("Cannot use --json and --markdown together");
       process.exit(1);
@@ -1218,12 +1241,14 @@ program
     await store.initialize();
     try {
       const report = await runEval({ store, windowDays });
-      if (opts.json) {
-        console.log(JSON.stringify(report, null, 2));
-      } else if (opts.markdown) {
-        console.log(formatEvalReport(report, "markdown", { windowDays }));
-      } else {
-        console.log(formatEvalReport(report));
+      const rendered = renderEvalReport(report, {
+        json: opts.json,
+        markdown: opts.markdown,
+        windowDays,
+      });
+      console.log(rendered);
+      if (opts.output) {
+        writeEvalReport(resolve(process.cwd(), opts.output), rendered);
       }
     } finally {
       await store.close();
@@ -1943,6 +1968,7 @@ program
     "flaker eval",
     "flaker eval --json",
     "flaker eval --markdown --window 7",
+    "flaker eval --markdown --window 7 --output .artifacts/flaker-review.md",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "reason"), [
     "flaker reason",

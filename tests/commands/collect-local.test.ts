@@ -16,6 +16,27 @@ function makeRunViewJson(runId: string, conclusion: string, tasks: { id: string;
   });
 }
 
+function makeCurrentRunViewJson(runId: string, ok: boolean, tasks: { id: string; status: string; code: number }[]) {
+  return JSON.stringify({
+    run_id: runId,
+    workflow_name: "flaker-local",
+    workflow_path: ".github/workflows/flaker-local.yml",
+    workspace_root: ".",
+    workspace_mode: "local",
+    started_at_ms: 1775644380000,
+    finished_at_ms: 1775644385000,
+    state: "completed",
+    ok,
+    exit_code: ok ? 0 : 1,
+    repository: "",
+    ref_name: "",
+    before_sha: "",
+    after_sha: "",
+    tasks: tasks.map((t) => ({ ...t, kind: "run", shell: "bash" })),
+    steps: [],
+  });
+}
+
 describe("collect-local command", () => {
   let store: DuckDBStore;
 
@@ -135,5 +156,37 @@ describe("collect-local command", () => {
     });
     expect(result.runsImported).toBe(0);
     expect(result.testsImported).toBe(0);
+  });
+
+  it("imports current actrun run view schema", async () => {
+    const listJson = JSON.stringify([
+      { run_id: "run-1", state: "completed", ok: true },
+    ]);
+
+    const result = await runCollectLocal({
+      store,
+      exec: (cmd) => {
+        if (cmd.includes("run list")) return listJson;
+        if (cmd.includes("run view")) {
+          return makeCurrentRunViewJson("run-1", true, [
+            { id: "e2e/step_4", status: "success", code: 0 },
+          ]);
+        }
+        return "";
+      },
+    });
+
+    expect(result.runsImported).toBe(1);
+    expect(result.testsImported).toBe(1);
+
+    const rows = await store.raw<{ status: string; duration_ms: number }>(
+      "SELECT status, duration_ms FROM test_results",
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        status: "passed",
+        duration_ms: 0,
+      }),
+    ]);
   });
 });

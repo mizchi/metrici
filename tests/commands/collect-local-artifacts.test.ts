@@ -162,9 +162,9 @@ describe("extractTestReportsFromArtifacts", () => {
     });
 
     expect(results.length).toBe(2);
-    expect(results[0].testName).toBe("adds numbers");
+    expect(results[0].testName).toBe("math > adds numbers");
     expect(results[0].status).toBe("passed");
-    expect(results[1].testName).toBe("subtracts numbers");
+    expect(results[1].testName).toBe("math > subtracts numbers");
     expect(results[1].status).toBe("failed");
   });
 
@@ -303,8 +303,8 @@ describe("collect-local with artifacts", () => {
       "SELECT test_name, status FROM test_results ORDER BY test_name",
     );
     expect(tests).toEqual([
-      { test_name: "adds numbers", status: "passed" },
-      { test_name: "subtracts numbers", status: "failed" },
+      { test_name: "math > adds numbers", status: "passed" },
+      { test_name: "math > subtracts numbers", status: "failed" },
     ]);
   });
 });

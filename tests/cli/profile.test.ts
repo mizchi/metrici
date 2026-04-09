@@ -43,12 +43,12 @@ config = ""
 
 [quarantine]
 auto = true
-flaky_rate_threshold = 0.3
+flaky_rate_threshold = 30
 min_runs = 5
 
 [flaky]
 window_days = 14
-detection_threshold = 0.1
+detection_threshold = 2
 
 [profile.scheduled]
 strategy = "random"
@@ -111,12 +111,12 @@ config = ""
 
 [quarantine]
 auto = true
-flaky_rate_threshold = 0.3
+flaky_rate_threshold = 30
 min_runs = 5
 
 [flaky]
 window_days = 14
-detection_threshold = 0.1
+detection_threshold = 2
 `.trim(),
     );
 

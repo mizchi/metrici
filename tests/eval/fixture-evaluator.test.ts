@@ -81,7 +81,9 @@ describe("evaluateFixture", () => {
     });
     await loadFixtureIntoStore(store, fixture);
 
-    const results = await evaluateFixture(store, fixture);
+    const results = await evaluateFixture(store, fixture, {
+      strategies: ["random", "weighted+co-failure"],
+    });
     const random = results.find((r) => r.strategy === "random")!;
     const coFailure = results.find((r) => r.strategy === "weighted+co-failure")!;
 
@@ -102,7 +104,9 @@ describe("evaluateFixture", () => {
     });
     await loadFixtureIntoStore(store, fixture);
 
-    const results = await evaluateFixture(store, fixture);
+    const results = await evaluateFixture(store, fixture, {
+      strategies: ["random", "hybrid+co-failure"],
+    });
     const random = results.find((r) => r.strategy === "random")!;
     const hybrid = results.find((r) => r.strategy === "hybrid+co-failure")!;
 

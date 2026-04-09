@@ -1,10 +1,11 @@
-import { loadConfig } from "../config.js";
+import { formatConfigWarning, loadConfig, loadConfigWithDiagnostics } from "../config.js";
 import { hasMoonBitJsBuild } from "../core/loader.js";
 
 export interface DoctorCheck {
   name: string;
   ok: boolean;
   detail: string;
+  warnings?: string[];
 }
 
 export interface DoctorReport {
@@ -16,6 +17,7 @@ export interface DoctorDeps {
   createStore: () => { initialize: () => Promise<void>; close: () => Promise<void> };
   hasMoonBitBuild: () => Promise<boolean>;
   canLoadConfig: () => boolean;
+  getConfigWarnings: () => string[];
 }
 
 export async function runDoctor(cwd: string, deps?: Partial<DoctorDeps>): Promise<DoctorReport> {
@@ -26,6 +28,8 @@ export async function runDoctor(cwd: string, deps?: Partial<DoctorDeps>): Promis
       loadConfig(cwd);
       return true;
     }),
+    getConfigWarnings: deps?.getConfigWarnings ?? (() =>
+      loadConfigWithDiagnostics(cwd).warnings.map(formatConfigWarning)),
   };
 
   const checks: DoctorCheck[] = [];
@@ -33,10 +37,12 @@ export async function runDoctor(cwd: string, deps?: Partial<DoctorDeps>): Promis
   // Config check
   try {
     const ok = resolved.canLoadConfig();
+    const warnings = ok ? resolved.getConfigWarnings() : [];
     checks.push({
       name: "config",
       ok,
       detail: ok ? "flaker.toml is readable" : "flaker.toml check returned false",
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
   } catch (error) {
     checks.push({
@@ -104,6 +110,11 @@ export function formatDoctorReport(report: DoctorReport): string {
   const lines: string[] = [];
   for (const c of report.checks) {
     lines.push(`${c.ok ? "OK" : "NG"}  ${c.name.padEnd(10)}${c.detail}`);
+    if (c.warnings) {
+      for (const warning of c.warnings) {
+        lines.push(`WARN  ${warning}`);
+      }
+    }
     if (!c.ok && REMEDIATION[c.name]) {
       lines.push(`              → ${REMEDIATION[c.name]}`);
     }

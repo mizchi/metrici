@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { MetricStore } from "../storage/types.js";
 import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
 
@@ -31,6 +33,11 @@ type EvalReportFormat = "text" | "markdown";
 
 interface EvalFormatOpts {
   windowDays?: number;
+}
+
+export interface EvalRenderOpts extends EvalFormatOpts {
+  json?: boolean;
+  markdown?: boolean;
 }
 
 interface PredictiveSignalSummary {
@@ -850,4 +857,25 @@ export function formatEvalReport(
     return formatEvalMarkdownReport(report, opts);
   }
   return formatEvalTextReport(report);
+}
+
+export function renderEvalReport(
+  report: EvalReport,
+  opts: EvalRenderOpts = {},
+): string {
+  if (opts.json && opts.markdown) {
+    throw new Error("Cannot render eval report as both JSON and Markdown");
+  }
+  if (opts.json) {
+    return JSON.stringify(report, null, 2);
+  }
+  if (opts.markdown) {
+    return formatEvalReport(report, "markdown", { windowDays: opts.windowDays });
+  }
+  return formatEvalReport(report, "text", { windowDays: opts.windowDays });
+}
+
+export function writeEvalReport(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf-8");
 }

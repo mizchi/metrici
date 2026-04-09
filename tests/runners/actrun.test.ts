@@ -34,4 +34,17 @@ describe("ActrunRunner", () => {
     runner.run("test-pattern");
     expect(commands[0]).toBe("actrun workflow run ci.yml --job test-job");
   });
+
+  it("local mode and trust flags are appended", () => {
+    const commands: string[] = [];
+    const runner = new ActrunRunner({
+      workflow: "ci.yml",
+      local: true,
+      trust: true,
+      exec: (cmd) => { commands.push(cmd); return ""; },
+    });
+
+    runner.run();
+    expect(commands[0]).toBe("actrun workflow run ci.yml --local --trust");
+  });
 });

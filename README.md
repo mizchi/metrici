@@ -162,6 +162,20 @@ From actrun local history:
 flaker collect-local --last 20
 ```
 
+To execute through `actrun`, configure the workflow path explicitly:
+
+```toml
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test -c playwright.config.ts"
+
+[runner.actrun]
+workflow = ".github/workflows/ci.yml"
+local = true
+trust = true
+# job = "e2e"
+```
+
 ### 3. Inspect flakiness
 
 ```bash
@@ -175,6 +189,7 @@ Useful evaluation outputs:
 ```bash
 flaker eval --json
 flaker eval --markdown --window 7
+flaker eval --markdown --window 7 --output .artifacts/flaker-review.md
 ```
 
 The markdown mode is meant for weekly review notes. It summarizes:
@@ -191,6 +206,7 @@ The markdown mode is meant for weekly review notes. It summarizes:
 ```bash
 flaker sample --strategy hybrid --count 25
 flaker sample --strategy affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
 ```
 
 ### 5. Sample and execute
@@ -198,6 +214,8 @@ flaker sample --strategy affected --changed src/foo.ts
 ```bash
 flaker run --strategy hybrid --count 25
 flaker run --strategy affected --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
+flaker run --runner actrun
 ```
 
 `flaker run` stores the local sampled run and records sampling telemetry so you can later measure:
@@ -207,6 +225,8 @@ flaker run --strategy affected --changed src/foo.ts
 - false negatives / false positives
 - average saved minutes
 
+When flaker has no local history yet, the sampling summary now explains the cold-start fallback and suggests the next steps to build usable history.
+
 ## Execution Profiles
 
 flaker automatically selects the right strategy for each execution context:
@@ -215,7 +235,7 @@ flaker automatically selects the right strategy for each execution context:
 |---------|----------|--------------|
 | `scheduled` | `full` (all tests) | `--profile scheduled` (explicit only) |
 | `ci` | `hybrid` + adaptive percentage | `CI=true` |
-| `local` | `affected` + time budget | default |
+| `local` | `affected` + `fallback_strategy` + time budget | default |
 
 ```bash
 # Auto-detect (CI → ci, otherwise → local)
@@ -241,9 +261,18 @@ adaptive = true        # auto-adjust based on false negative rate
 [profile.local]
 strategy = "affected"
 max_duration_seconds = 60
+fallback_strategy = "weighted"
 ```
 
 Data flows downstream: daily accumulates history → CI uses it for smarter sampling → local uses dependency graph for fast feedback. The `adaptive` flag automatically reduces CI percentage when data quality is high.
+
+For local dogfooding, the practical loop is:
+
+```bash
+flaker affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
+```
 
 ## CI Integration
 
@@ -300,6 +329,7 @@ This works best in repositories with:
 flaker collect
 flaker collect-local
 flaker import report.json --adapter playwright
+flaker collect-coverage --format istanbul --input coverage/coverage-final.json
 ```
 
 ### Sampling and execution
@@ -320,6 +350,7 @@ flaker run --strategy affected --changed src/foo.ts
 flaker flaky
 flaker reason
 flaker eval
+flaker train
 flaker query "SELECT * FROM test_results LIMIT 20"
 ```
 
@@ -382,7 +413,7 @@ type = "playwright"
 
 [runner]
 type = "vitest"
-command = "pnpm vitest"
+command = "pnpm exec vitest run"
 
 [affected]
 resolver = "workspace"
@@ -407,6 +438,7 @@ adaptive = true
 [profile.local]
 strategy = "affected"
 max_duration_seconds = 60
+fallback_strategy = "weighted"
 ```
 
 ## Docs
@@ -414,6 +446,28 @@ max_duration_seconds = 60
 - [Usage Guide](https://github.com/mizchi/flaker/blob/main/docs/how-to-use.md)
 - [Why flaker](https://github.com/mizchi/flaker/blob/main/docs/why-flaker.md)
 - [Design Partner Rollout](https://github.com/mizchi/flaker/blob/main/docs/design-partner-rollout.ja.md)
+
+## Sibling Checkout
+
+For dogfooding from a sibling repo such as `../sample-webapp-2026`, use the official dev CLI wrapper:
+
+```bash
+# one-time setup in the flaker repo
+pnpm --dir ../flaker install
+
+# from the sibling project root
+node ../flaker/scripts/dev-cli.mjs affected --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs sample --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs run --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs eval --markdown --window 7 --output .artifacts/flaker-review.md
+
+# or via pnpm, preserving the caller cwd through INIT_CWD
+pnpm --dir ../flaker run dev:cli -- run --profile local --changed src/foo.ts
+```
+
+`scripts/dev-cli.mjs` reuses `dist/cli/main.js` when it is current, auto-builds when `dist/cli/main.js` / `dist/moonbit/flaker.js` are missing, and also rebuilds when source files are newer than `dist`. Use `--rebuild` only when you want to force a fresh build regardless of timestamps.
+
+If multiple local commands share the same `.flaker/data.duckdb`, run them sequentially. DuckDB is single-writer, so parallel dogfood runs can conflict on the DB lock.
 
 ## Release
 

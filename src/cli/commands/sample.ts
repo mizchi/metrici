@@ -28,6 +28,7 @@ export interface SampleOpts {
   count?: number;
   percentage?: number;
   mode: SamplingMode;
+  fallbackMode?: SamplingMode;
   seed?: number;
   resolver?: DependencyResolver;
   changedFiles?: string[];
@@ -38,6 +39,7 @@ export interface SampleOpts {
   coFailureAlpha?: number;
   holdoutRatio?: number;
   modelPath?: string;
+  samplingMeta?: PrecomputedSamplingMeta;
 }
 
 export interface SamplingSummary {
@@ -64,6 +66,17 @@ export interface SamplePlan {
   holdout: TestMeta[];
   allTests: TestMeta[];
   summary: SamplingSummary;
+}
+
+export interface PrecomputedSamplingMeta {
+  tests: TestMeta[];
+  fallbackReason: string | null;
+}
+
+interface SamplingFallbackHint {
+  detail: string;
+  nextAction: string;
+  historyTarget: string;
 }
 
 function toCoreVariantEntries(
@@ -114,7 +127,7 @@ export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
 export async function planSample(opts: SampleOpts): Promise<SamplePlan> {
   const core = await loadCore();
   const listedTests = opts.listedTests ?? [];
-  const meta = await buildSamplingMeta(opts.store, listedTests, core);
+  const meta = opts.samplingMeta ?? await prepareSamplingMeta(opts.store, listedTests, core);
 
   let allTests = meta.tests.map((t) => ({
     ...t,
@@ -209,50 +222,34 @@ async function selectByStrategy(
   opts: SampleOpts,
   core: MetriciCore,
 ): Promise<{ sampled: TestMeta[]; effectiveMode: SamplingMode }> {
-  let effectiveMode: SamplingMode = opts.mode;
+  const pickPrimary = async (
+    mode: SamplingMode,
+  ): Promise<{ sampled: TestMeta[]; effectiveMode: SamplingMode }> => {
+    let effectiveMode: SamplingMode = mode;
 
-  if (opts.mode === "affected" || opts.mode === "hybrid") {
-    if (!opts.resolver || !opts.changedFiles) {
-      throw new Error(`${opts.mode} mode requires resolver and changedFiles`);
-    }
-    const allSuites = [...new Set(allTests.map((t) => t.suite))];
-    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
-    if (opts.mode === "affected") {
+    if (mode === "affected" || mode === "hybrid") {
+      if (!opts.resolver || !opts.changedFiles) {
+        throw new Error(`${mode} mode requires resolver and changedFiles`);
+      }
+      const allSuites = [...new Set(allTests.map((t) => t.suite))];
+      const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
+      if (mode === "affected") {
+        return {
+          sampled: allTests.filter((t) => affectedSuites.includes(t.suite)),
+          effectiveMode,
+        };
+      }
       return {
-        sampled: allTests.filter((t) => affectedSuites.includes(t.suite)),
+        sampled: core.sampleHybrid(allTests, affectedSuites, count, seed),
         effectiveMode,
       };
     }
-    return {
-      sampled: core.sampleHybrid(allTests, affectedSuites, count, seed),
-      effectiveMode,
-    };
-  }
 
-  if (opts.mode === "gbdt") {
-    const sampled = sampleByGBDT(allTests, count, core, opts.modelPath);
-    if (sampled.length > 0 || allTests.length === 0) {
-      return { sampled, effectiveMode };
-    }
-    effectiveMode = "weighted";
-    return {
-      sampled: core.sampleWeighted(allTests, count, seed),
-      effectiveMode,
-    };
-  }
-
-  if (opts.mode === "coverage-guided") {
-    if (!opts.changedFiles || opts.changedFiles.length === 0) {
-      throw new Error("coverage-guided mode requires changedFiles");
-    }
-    const coverageRows = await opts.store.raw<{
-      test_id: string;
-      suite: string;
-      test_name: string;
-      edge: string;
-    }>("SELECT test_id, suite, test_name, edge FROM test_coverage");
-
-    if (coverageRows.length === 0) {
+    if (mode === "gbdt") {
+      const sampled = sampleByGBDT(allTests, count, core, opts.modelPath);
+      if (sampled.length > 0 || allTests.length === 0) {
+        return { sampled, effectiveMode };
+      }
       effectiveMode = "weighted";
       return {
         sampled: core.sampleWeighted(allTests, count, seed),
@@ -260,67 +257,99 @@ async function selectByStrategy(
       };
     }
 
-    // Build changed edges: edges whose file path matches any changed file
-    const changedFileSet = new Set(opts.changedFiles);
-    const changedEdges = new Set<string>();
-    for (const row of coverageRows) {
-      const filePart = row.edge.split(":")[0];
-      if (changedFileSet.has(filePart)) {
-        changedEdges.add(row.edge);
+    if (mode === "coverage-guided") {
+      if (!opts.changedFiles || opts.changedFiles.length === 0) {
+        throw new Error("coverage-guided mode requires changedFiles");
       }
+      const coverageRows = await opts.store.raw<{
+        test_id: string;
+        suite: string;
+        test_name: string;
+        edge: string;
+      }>("SELECT test_id, suite, test_name, edge FROM test_coverage");
+
+      if (coverageRows.length === 0) {
+        effectiveMode = "weighted";
+        return {
+          sampled: core.sampleWeighted(allTests, count, seed),
+          effectiveMode,
+        };
+      }
+
+      // Build changed edges: edges whose file path matches any changed file
+      const changedFileSet = new Set(opts.changedFiles);
+      const changedEdges = new Set<string>();
+      for (const row of coverageRows) {
+        const filePart = row.edge.split(":")[0];
+        if (changedFileSet.has(filePart)) {
+          changedEdges.add(row.edge);
+        }
+      }
+
+      if (changedEdges.size === 0) {
+        effectiveMode = "weighted";
+        return {
+          sampled: core.sampleWeighted(allTests, count, seed),
+          effectiveMode,
+        };
+      }
+
+      // Build coverage map: suite -> edges
+      const coverageMap = new Map<string, { test_name: string; edges: string[] }>();
+      for (const row of coverageRows) {
+        const existing = coverageMap.get(row.suite);
+        if (existing) {
+          existing.edges.push(row.edge);
+        } else {
+          coverageMap.set(row.suite, { test_name: row.test_name, edges: [row.edge] });
+        }
+      }
+
+      const coverages = [...coverageMap.entries()].map(([suite, data]) => ({
+        suite,
+        test_name: data.test_name,
+        edges: [...new Set(data.edges)],
+      }));
+
+      const result = core.selectByCoverage(coverages, [...changedEdges], count);
+      const selectedSuites = new Set(result.selected);
+      return {
+        sampled: allTests.filter((t) => selectedSuites.has(t.suite)),
+        effectiveMode,
+      };
     }
 
-    if (changedEdges.size === 0) {
-      effectiveMode = "weighted";
+    if (mode === "full") {
+      return {
+        sampled: allTests,
+        effectiveMode: "full",
+      };
+    }
+
+    if (mode === "weighted") {
       return {
         sampled: core.sampleWeighted(allTests, count, seed),
         effectiveMode,
       };
     }
 
-    // Build coverage map: suite -> edges
-    const coverageMap = new Map<string, { test_name: string; edges: string[] }>();
-    for (const row of coverageRows) {
-      const existing = coverageMap.get(row.suite);
-      if (existing) {
-        existing.edges.push(row.edge);
-      } else {
-        coverageMap.set(row.suite, { test_name: row.test_name, edges: [row.edge] });
-      }
-    }
-
-    const coverages = [...coverageMap.entries()].map(([suite, data]) => ({
-      suite,
-      test_name: data.test_name,
-      edges: [...new Set(data.edges)],
-    }));
-
-    const result = core.selectByCoverage(coverages, [...changedEdges], count);
-    const selectedSuites = new Set(result.selected);
     return {
-      sampled: allTests.filter((t) => selectedSuites.has(t.suite)),
+      sampled: core.sampleRandom(allTests, count, seed),
       effectiveMode,
     };
-  }
-
-  if (opts.mode === "full") {
-    return {
-      sampled: allTests,
-      effectiveMode: "full",
-    };
-  }
-
-  if (opts.mode === "weighted") {
-    return {
-      sampled: core.sampleWeighted(allTests, count, seed),
-      effectiveMode,
-    };
-  }
-
-  return {
-    sampled: core.sampleRandom(allTests, count, seed),
-    effectiveMode,
   };
+
+  const primary = await pickPrimary(opts.mode);
+  if (
+    primary.sampled.length === 0
+    && allTests.length > 0
+    && opts.fallbackMode
+    && opts.fallbackMode !== opts.mode
+  ) {
+    return pickPrimary(opts.fallbackMode);
+  }
+
+  return primary;
 }
 
 interface BuildSamplingSummaryOpts {
@@ -387,15 +416,34 @@ export function formatSamplingSummary(
   ];
   if (summary.fallbackReason) {
     lines.push(`  Fallback reason:          ${summary.fallbackReason}`);
+    const hint = describeSamplingFallback(summary.fallbackReason);
+    if (hint) {
+      lines.push(`  Fallback details:         ${hint.detail}`);
+      lines.push(`  Next action:              ${hint.nextAction}`);
+      lines.push(`  History target:           ${hint.historyTarget}`);
+    }
   }
   return lines.join("\n");
 }
 
-async function buildSamplingMeta(
+function describeSamplingFallback(reason: string): SamplingFallbackHint | null {
+  switch (reason) {
+    case "cold-start-listed-tests":
+      return {
+        detail: "No historical test results were found, so flaker sampled from listed tests.",
+        nextAction: "Run `flaker collect` or `flaker import`, then keep recording local runs.",
+        historyTarget: "Aim for >= 5 runs/test (10 is better) before trusting flake trends.",
+      };
+    default:
+      return null;
+  }
+}
+
+export async function prepareSamplingMeta(
   store: MetricStore,
   listedTests: TestId[],
   core: MetriciCore,
-): Promise<{ tests: TestMeta[]; fallbackReason: string | null }> {
+): Promise<PrecomputedSamplingMeta> {
   const rows = await store.raw<{
     suite: string;
     test_name: string;

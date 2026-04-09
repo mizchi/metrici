@@ -2,7 +2,7 @@ import type { MetricStore } from "../storage/types.js";
 import type { FixtureData } from "../core/loader.js";
 import type { DependencyResolver } from "../resolvers/types.js";
 import { loadCore, type MetriciCore } from "../core/loader.js";
-import { planSample } from "../commands/sample.js";
+import { planSample, prepareSamplingMeta } from "../commands/sample.js";
 
 function generateSyntheticCoverage(fixture: FixtureData): { suite: string; test_name: string; edges: string[] }[] {
   return fixture.tests.map((t) => {
@@ -72,18 +72,25 @@ export interface SweepResult {
   results: EvalStrategyResult[];
 }
 
+export interface EvaluateFixtureOptions {
+  strategies?: string[];
+}
+
 export async function evaluateFixture(
   store: MetricStore,
   fixture: FixtureData,
+  opts: EvaluateFixtureOptions = {},
 ): Promise<EvalStrategyResult[]> {
   const core = await loadCore();
   const resolver = createFixtureResolver(fixture);
+  const samplingMeta = await prepareSamplingMeta(store, [], core);
+  const strategyFilter = opts.strategies ? new Set(opts.strategies) : null;
   const strategies = [
     { name: "random", mode: "random" as const, useCoFailure: false, useResolver: false },
     { name: "weighted", mode: "weighted" as const, useCoFailure: false, useResolver: false },
     { name: "weighted+co-failure", mode: "weighted" as const, useCoFailure: true, useResolver: false },
     { name: "hybrid+co-failure", mode: "hybrid" as const, useCoFailure: true, useResolver: true },
-  ];
+  ].filter((strategy) => strategyFilter?.has(strategy.name) ?? true);
 
   const evalStart = Math.floor(fixture.commits.length * 0.75);
   const evalCommits = fixture.commits.slice(evalStart);
@@ -112,6 +119,7 @@ export async function evaluateFixture(
         seed: 42,
         changedFiles,
         resolver: strategy.useResolver ? resolver : undefined,
+        samplingMeta,
       });
 
       const sampledSuites = new Set(plan.sampled.map((t) => t.suite));
@@ -133,7 +141,7 @@ export async function evaluateFixture(
   }
 
   // Coverage-guided strategy (via MoonBit core)
-  {
+  if (strategyFilter?.has("coverage-guided") ?? true) {
     const coverages = generateSyntheticCoverage(fixture);
     let totalFailures = 0;
     let detectedFailures = 0;
@@ -164,7 +172,7 @@ export async function evaluateFixture(
   }
 
   // GBDT strategy (via MoonBit core): train on first 75% of commits, predict on eval commits
-  {
+  if (strategyFilter?.has("gbdt") ?? true) {
     const trainCommits = fixture.commits.slice(0, evalStart);
 
     const fileTestFailures = new Map<string, Map<string, { co: number; fail: number }>>();

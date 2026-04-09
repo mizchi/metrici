@@ -24,6 +24,7 @@ export interface RunOpts {
   count?: number;
   percentage?: number;
   mode: SamplingMode;
+  fallbackMode?: SamplingMode;
   seed?: number;
   resolver?: DependencyResolver;
   changedFiles?: string[];
@@ -85,6 +86,7 @@ export async function runTests(opts: RunOpts): Promise<RunCommandResult> {
     count: opts.count,
     percentage: opts.percentage,
     mode: opts.mode,
+    fallbackMode: opts.fallbackMode,
     seed: opts.seed,
     resolver: opts.resolver,
     changedFiles: opts.changedFiles,

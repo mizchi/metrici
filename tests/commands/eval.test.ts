@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import type { TestResult, WorkflowRun } from "../../src/cli/storage/types.js";
-import { runEval, formatEvalReport } from "../../src/cli/commands/eval.js";
+import {
+  runEval,
+  formatEvalReport,
+  renderEvalReport,
+  writeEvalReport,
+} from "../../src/cli/commands/eval.js";
 
 function makeRun(
   id: number,
@@ -349,5 +357,32 @@ describe("eval command", () => {
     expect(formatted).toContain("| Avg saved minutes | 14.7 min |");
     expect(formatted).toContain("| Fallback rate | 8.3% (1) |");
     expect(formatted).toContain("| CI pass when local pass | 100% (10/10) |");
+  });
+
+  it("renders raw JSON when requested", async () => {
+    const report = await runEval({ store });
+
+    const rendered = renderEvalReport(report, { json: true });
+
+    expect(JSON.parse(rendered)).toMatchObject({
+      healthScore: report.healthScore,
+      dataSufficiency: {
+        totalRuns: report.dataSufficiency.totalRuns,
+      },
+    });
+  });
+
+  it("writes rendered eval output to a file", async () => {
+    const report = await runEval({ store });
+    const dir = mkdtempSync(join(tmpdir(), "flaker-eval-"));
+    const outputPath = join(dir, "review.md");
+
+    writeEvalReport(
+      outputPath,
+      renderEvalReport(report, { markdown: true, windowDays: 7 }),
+    );
+
+    expect(existsSync(outputPath)).toBe(true);
+    expect(readFileSync(outputPath, "utf-8")).toContain("# flaker Review (last 7 days)");
   });
 });

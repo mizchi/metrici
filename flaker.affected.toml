@@ -1,0 +1,271 @@
+# Keep dogfood command rules narrow first.
+# Broad module-family rules stay below for shared adapters/runners/core.
+[[rules]]
+changed = [
+  "src/cli/commands/eval.ts",
+  "src/cli/commands/context.ts",
+  "src/cli/commands/calibrate.ts",
+  "src/cli/commands/insights.ts",
+  "src/cli/commands/self-eval.ts",
+  "src/cli/commands/kpi.ts",
+]
+select = [
+  "tests/commands/eval.test.ts",
+  "tests/commands/context.test.ts",
+  "tests/commands/calibrate.test.ts",
+  "tests/commands/insights.test.ts",
+  "tests/commands/self-eval.test.ts",
+  "tests/commands/sample-holdout-gbdt.test.ts",
+  "tests/eval/*.test.ts",
+  "tests/kpi/*.test.ts",
+  "tests/integration-e2e-flow.test.ts",
+  "tests/pipeline/*.test.ts",
+]
+reason = "command:eval"
+
+[[rules]]
+changed = ["src/cli/commands/train.ts"]
+select = [
+  "tests/commands/train.test.ts",
+  "tests/eval/gbdt.test.ts",
+  "tests/pipeline/*.test.ts",
+]
+reason = "command:train"
+
+[[rules]]
+changed = [
+  "src/cli/commands/sample.ts",
+  "src/cli/commands/run.ts",
+  "src/cli/commands/sampling-options.ts",
+  "src/cli/commands/sampling-run.ts",
+  "src/cli/commands/reason.ts",
+  "src/cli/commands/co-failure-window.ts",
+  "src/cli/commands/test-key.ts",
+]
+select = [
+  "tests/commands/sample*.test.ts",
+  "tests/commands/run.test.ts",
+  "tests/commands/reason.test.ts",
+  "tests/commands/co-failure-window.test.ts",
+  "tests/commands/skip-quarantined.test.ts",
+  "tests/commands/sampling-options.test.ts",
+  "tests/commands/sampling-run.test.ts",
+  "tests/integration.test.ts",
+  "tests/integration-phase2.test.ts",
+  "tests/integration-e2e-flow.test.ts",
+  "tests/pipeline/*.test.ts",
+]
+reason = "command:sampling"
+
+[[rules]]
+changed = [
+  "src/cli/commands/collect.ts",
+  "src/cli/commands/collect-local.ts",
+  "src/cli/commands/collect-commit-changes.ts",
+  "src/cli/commands/import.ts",
+  "src/cli/commands/export-parquet.ts",
+  "src/cli/commands/retry.ts",
+]
+select = [
+  "tests/commands/collect*.test.ts",
+  "tests/commands/import.test.ts",
+  "tests/commands/export-parquet.test.ts",
+  "tests/cli/retry.test.ts",
+  "tests/storage/commit-changes.test.ts",
+  "tests/parquet/*.test.ts",
+  "tests/integration-phase3.test.ts",
+  "tests/integration-e2e-flow.test.ts",
+]
+reason = "command:collection"
+
+[[rules]]
+changed = ["src/cli/commands/collect-coverage.ts"]
+select = [
+  "tests/commands/collect-coverage.test.ts",
+  "tests/adapters/coverage.test.ts",
+  "tests/eval/coverage-guided.test.ts",
+]
+reason = "command:coverage"
+
+[[rules]]
+changed = ["src/cli/commands/report.ts"]
+select = [
+  "tests/commands/report.test.ts",
+  "tests/reporting/*.test.ts",
+]
+reason = "command:report"
+
+[[rules]]
+changed = ["src/cli/commands/check.ts"]
+select = [
+  "tests/commands/check.test.ts",
+]
+reason = "command:check"
+
+[[rules]]
+changed = [
+  "src/cli/commands/quarantine.ts",
+  "src/cli/commands/doctor.ts",
+  "src/cli/commands/query.ts",
+  "src/cli/commands/affected.ts",
+  "src/cli/commands/diagnose.ts",
+]
+select = [
+  "tests/commands/quarantine.test.ts",
+  "tests/commands/doctor.test.ts",
+  "tests/commands/query.test.ts",
+  "tests/commands/affected.test.ts",
+  "tests/commands/diagnose.test.ts",
+  "tests/quarantine-manifest.test.ts",
+]
+reason = "command:policy"
+
+[[rules]]
+changed = [
+  "src/cli/commands/flaky.ts",
+  "src/cli/commands/bisect.ts",
+]
+select = [
+  "tests/commands/flaky.test.ts",
+  "tests/commands/flaky-trend.test.ts",
+  "tests/commands/flaky-variant.test.ts",
+  "tests/commands/true-flaky.test.ts",
+  "tests/commands/bisect.test.ts",
+]
+reason = "command:flaky"
+
+[[rules]]
+changed = [
+  "src/cli/commands/confirm.ts",
+  "src/cli/commands/confirm-local.ts",
+  "src/cli/commands/confirm-remote.ts",
+]
+select = [
+  "tests/cli/confirm*.test.ts",
+]
+reason = "command:confirm"
+
+[[rules]]
+changed = ["src/cli/commands/init.ts"]
+select = [
+  "tests/commands/init.test.ts",
+]
+reason = "command:init"
+
+[[rules]]
+changed = ["src/cli/adapters/*.ts"]
+select = [
+  "tests/adapters/*.test.ts",
+  "tests/commands/collect*.test.ts",
+  "tests/commands/import.test.ts",
+]
+reason = "cli:adapters"
+
+[[rules]]
+changed = ["src/cli/runners/*.ts"]
+select = [
+  "tests/runners/*.test.ts",
+  "tests/commands/run.test.ts",
+  "tests/commands/collect-local*.test.ts",
+  "tests/commands/retry.test.ts",
+]
+reason = "cli:runners"
+
+[[rules]]
+changed = ["src/cli/resolvers/*.ts", "src/cli/graph/**/*.ts", "src/graph/**/*.ts"]
+select = [
+  "tests/resolvers/*.test.ts",
+  "tests/graph/*.test.ts",
+  "tests/graph/adapters/*.test.ts",
+  "tests/commands/affected.test.ts",
+  "tests/core/resolve-affected-glob-parity.test.ts",
+]
+reason = "cli:resolvers"
+
+[[rules]]
+changed = ["src/cli/storage/*.ts", "src/parquet_export/**/*.mbt"]
+select = [
+  "tests/storage/*.test.ts",
+  "tests/parquet/*.test.ts",
+  "tests/kpi/*.test.ts",
+  "tests/commands/export-parquet.test.ts",
+  "tests/commands/query.test.ts",
+]
+reason = "cli:storage"
+
+[[rules]]
+changed = ["src/cli/core/*.ts", "src/identity/**/*.mbt", "src/cli/identity.ts"]
+select = [
+  "tests/core/*.test.ts",
+  "tests/identity/*.test.ts",
+]
+reason = "cli:core"
+
+[[rules]]
+changed = [
+  "src/cli/eval/*.ts",
+  "src/eval/**/*.mbt",
+  "src/gbdt/**/*.mbt",
+  "src/fixture/**/*.mbt",
+  "src/sampling/**/*.mbt",
+]
+select = [
+  "tests/eval/*.test.ts",
+  "tests/commands/eval.test.ts",
+  "tests/commands/calibrate.test.ts",
+  "tests/commands/context.test.ts",
+  "tests/commands/insights.test.ts",
+  "tests/commands/sample*.test.ts",
+  "tests/commands/co-failure-window.test.ts",
+  "tests/kpi/*.test.ts",
+  "tests/pipeline/*.test.ts",
+]
+reason = "eval-and-sampling"
+
+[[rules]]
+changed = [
+  "src/cli/reporting/*.ts",
+  "src/report_aggregate/**/*.mbt",
+  "src/report_diff/**/*.mbt",
+  "src/report_summary/**/*.mbt",
+  "src/quarantine/**/*.mbt",
+  "src/config_check/**/*.mbt",
+  "src/affected/**/*.mbt",
+  "src/affected_explain/**/*.mbt",
+]
+select = [
+  "tests/reporting/*.test.ts",
+  "tests/commands/report.test.ts",
+  "tests/commands/check.test.ts",
+  "tests/commands/quarantine.test.ts",
+  "tests/quarantine-manifest.test.ts",
+]
+reason = "reporting-and-policy"
+
+[[rules]]
+changed = ["src/cli/profile.ts"]
+select = [
+  "tests/cli/profile*.test.ts",
+  "tests/cli/time-budget.test.ts",
+]
+reason = "cli:profile"
+
+[[rules]]
+changed = ["src/cli/main.ts", "src/cli/config.ts", "flaker.toml", "flaker.affected.toml"]
+select = [
+  "tests/cli/*.test.ts",
+  "tests/commands/init.test.ts",
+  "tests/commands/doctor.test.ts",
+  "tests/commands/check.test.ts",
+  "tests/commands/eval.test.ts",
+  "tests/commands/sample.test.ts",
+]
+reason = "cli:surface"
+
+[[rules]]
+changed = ["scripts/*.mjs", "package.json", "pnpm-lock.yaml"]
+select = [
+  "tests/package/*.test.ts",
+  "tests/cli/help.test.ts",
+]
+reason = "packaging"

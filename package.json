@@ -10,6 +10,7 @@
     "build": "node ./scripts/build-package.mjs",
     "build:package": "node ./scripts/build-package.mjs",
     "cli": "node dist/cli/main.js",
+    "dev:cli": "node ./scripts/dev-cli.mjs",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
     "test": "vitest run",
     "test:watch": "vitest watch",

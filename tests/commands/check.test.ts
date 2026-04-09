@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  appendConfigWarnings,
   formatConfigCheckReport,
   loadTaskDefinitionsForCheck,
   runConfigCheck,
@@ -164,5 +165,34 @@ describe("check command", () => {
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
+  });
+
+  it("appends threshold unit warnings to the report", () => {
+    const base = runConfigCheck({
+      listedTests: [],
+      discoveredSpecs: [],
+      taskDefinitions: [],
+    });
+
+    const report = appendConfigWarnings(base, [
+      {
+        code: "legacy-threshold-unit",
+        path: "quarantine.flaky_rate_threshold",
+        value: 0.3,
+        normalizedValue: 30,
+      },
+    ]);
+
+    expect(report.summary.warningCount).toBe(1);
+    expect(report.warnings).toEqual([
+      expect.objectContaining({
+        code: "legacy-threshold-unit",
+        spec: "flaker.toml",
+      }),
+    ]);
+
+    const markdown = formatConfigCheckReport(report, "markdown");
+    expect(markdown).toContain("quarantine.flaky_rate_threshold");
+    expect(markdown).toContain("30%");
   });
 });

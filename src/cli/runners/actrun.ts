@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import type { ActrunRunOutput } from "../adapters/actrun.js";
+import {
+  resolveActrunCompletedAt,
+  resolveActrunConclusion,
+  resolveActrunHeadBranch,
+  resolveActrunHeadSha,
+  resolveActrunStartedAt,
+  type ActrunRunOutput,
+} from "../adapters/actrun.js";
 
 export interface ActrunResult {
   runId: string;
@@ -25,8 +32,24 @@ type SafeExecFn = (cmd: string, args: string[]) => string;
 interface ActrunRunnerOpts {
   workflow: string;
   job?: string;
+  local?: boolean;
+  trust?: boolean;
   exec?: (cmd: string) => string;
   safeExec?: SafeExecFn;
+}
+
+function extractRunId(output: string): string {
+  const matched = output.match(/(?:^|\n)run_id=([^\s]+)/);
+  if (matched?.[1]) {
+    return matched[1];
+  }
+
+  const trimmed = output.trim();
+  if (trimmed.length > 0 && !trimmed.includes("\n")) {
+    return trimmed;
+  }
+
+  throw new Error(`Failed to parse actrun run id from output: ${trimmed || "<empty>"}`);
 }
 
 function defaultSafeExec(cmd: string, args: string[]): string {
@@ -37,11 +60,15 @@ function defaultSafeExec(cmd: string, args: string[]): string {
 export class ActrunRunner {
   private workflow: string;
   private job?: string;
+  private local: boolean;
+  private trust: boolean;
   private safeExecFn: SafeExecFn;
 
   constructor(opts: ActrunRunnerOpts) {
     this.workflow = opts.workflow;
     this.job = opts.job;
+    this.local = opts.local ?? false;
+    this.trust = opts.trust ?? false;
     if (opts.safeExec) {
       this.safeExecFn = opts.safeExec;
     } else if (opts.exec) {
@@ -54,12 +81,16 @@ export class ActrunRunner {
 
   run(): void {
     const args = ["workflow", "run", this.workflow];
+    if (this.local) args.push("--local");
+    if (this.trust) args.push("--trust");
     if (this.job) args.push("--job", this.job);
     this.safeExecFn("actrun", args);
   }
 
   retry(): void {
     const args = ["workflow", "run", this.workflow, "--retry"];
+    if (this.local) args.push("--local");
+    if (this.trust) args.push("--trust");
     if (this.job) args.push("--job", this.job);
     this.safeExecFn("actrun", args);
   }
@@ -67,24 +98,28 @@ export class ActrunRunner {
   runWithResult(): ActrunResult {
     // Step 1: Execute workflow and capture run ID
     const runArgs = ["workflow", "run", this.workflow, "--json"];
+    if (this.local) runArgs.push("--local");
+    if (this.trust) runArgs.push("--trust");
     if (this.job) runArgs.push("--job", this.job);
-    const runId = this.safeExecFn("actrun", runArgs).trim();
+    const runId = extractRunId(this.safeExecFn("actrun", runArgs));
 
     // Step 2: Get full results (runId is validated as output of step 1)
     const viewJson = this.safeExecFn("actrun", ["run", "view", runId, "--json"]);
     const output: ActrunRunOutput = JSON.parse(viewJson);
 
-    const startedAt = new Date(output.startedAt);
-    const completedAt = new Date(output.completedAt);
+    const startedAtIso = resolveActrunStartedAt(output);
+    const completedAtIso = resolveActrunCompletedAt(output);
+    const startedAt = new Date(startedAtIso);
+    const completedAt = new Date(completedAtIso);
     const durationMs = completedAt.getTime() - startedAt.getTime();
 
     return {
       runId: output.run_id,
-      conclusion: output.conclusion,
-      headSha: output.headSha,
-      headBranch: output.headBranch,
-      startedAt: output.startedAt,
-      completedAt: output.completedAt,
+      conclusion: resolveActrunConclusion(output),
+      headSha: resolveActrunHeadSha(output),
+      headBranch: resolveActrunHeadBranch(output),
+      startedAt: startedAtIso,
+      completedAt: completedAtIso,
       durationMs,
       tasks: output.tasks.map((t) => ({
         id: t.id,

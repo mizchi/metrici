@@ -18,18 +18,25 @@ artifact_name = "playwright-report"
 type = "vitest"
 command = "pnpm test"
 
+# Optional: used by \`flaker run --runner actrun\`
+# [runner.actrun]
+# workflow = ".github/workflows/ci.yml"
+# job = "test"
+# local = true
+# trust = true
+
 [affected]
 resolver = "git"
 config = ""
 
 [quarantine]
 auto = true
-flaky_rate_threshold = 0.3
+flaky_rate_threshold = 30  # percent
 min_runs = 5
 
 [flaky]
 window_days = 14
-detection_threshold = 0.1
+detection_threshold = 2    # percent
 `;
 }
 

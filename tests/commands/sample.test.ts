@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import type { TestResult, WorkflowRun } from "../../src/cli/storage/types.js";
 import {
   formatSamplingSummary,
   planSample,
+  prepareSamplingMeta,
   runSample,
 } from "../../src/cli/commands/sample.js";
 import type { DependencyResolver } from "../../src/cli/resolvers/types.js";
+import { loadCore } from "../../src/cli/core/loader.js";
 
 describe("sample command", () => {
   let store: DuckDBStore;
@@ -121,6 +123,23 @@ describe("sample command", () => {
       seed: 42,
     });
     expect(sampled).toHaveLength(10);
+  });
+
+  it("uses precomputed sampling meta without querying store history", async () => {
+    const core = await loadCore();
+    const samplingMeta = await prepareSamplingMeta(store, [], core);
+    const rawSpy = vi.spyOn(store, "raw").mockRejectedValue(new Error("history query should not run"));
+
+    const plan = await planSample({
+      store,
+      count: 1,
+      mode: "weighted",
+      seed: 42,
+      samplingMeta,
+    });
+
+    expect(plan.sampled).toHaveLength(1);
+    expect(rawSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -276,6 +295,9 @@ describe("sample command without history", () => {
     expect(output).toContain("Estimated saved minutes:  12.3");
     expect(output).toContain("CI pass when local pass:  97.2%");
     expect(output).toContain("Fallback reason:          cold-start-listed-tests");
+    expect(output).toContain("Fallback details:         No historical test results were found");
+    expect(output).toContain("Next action:              Run `flaker collect` or `flaker import`");
+    expect(output).toContain("History target:           Aim for >= 5 runs/test");
   });
 
   it("supports hybrid mode from listedTests on cold start", async () => {
@@ -319,6 +341,58 @@ describe("sample command without history", () => {
         }),
       ]),
     );
+  });
+
+  it("falls back to a configured strategy when affected selects nothing", async () => {
+    await store.insertWorkflowRun({
+      id: 1,
+      repo: "test/repo",
+      branch: "main",
+      commitSha: "abc",
+      event: "push",
+      status: "completed",
+      createdAt: new Date(),
+      durationMs: 1000,
+    });
+    await store.insertTestResults([
+      {
+        workflowRunId: 1,
+        suite: "tests/commands/eval.test.ts",
+        testName: "renders raw JSON when requested",
+        status: "passed",
+        durationMs: 100,
+        retryCount: 0,
+        errorMessage: null,
+        commitSha: "abc",
+        variant: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const plan = await planSample({
+      store,
+      mode: "affected",
+      fallbackMode: "weighted",
+      count: 1,
+      seed: 42,
+      changedFiles: ["src/unmatched/file.ts"],
+      resolver: {
+        resolve() {
+          return [];
+        },
+      },
+      listedTests: [
+        {
+          suite: "tests/commands/eval.test.ts",
+          testName: "renders raw JSON when requested",
+          taskId: "commands-eval",
+        },
+      ],
+    });
+
+    expect(plan.sampled).toHaveLength(1);
+    expect(plan.summary.strategy).toBe("weighted");
+    expect(plan.summary.selectedCount).toBe(1);
   });
 });
 

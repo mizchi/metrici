@@ -14,6 +14,26 @@ pnpm add -D @mizchi/flaker
 pnpm dlx @mizchi/flaker --help
 ```
 
+### sibling checkout で dogfood する
+
+```bash
+# ../flaker 側で 1 回だけ
+pnpm --dir ../flaker install
+
+# 利用側プロジェクトの root から
+node ../flaker/scripts/dev-cli.mjs affected --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs sample --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs run --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs eval --markdown --window 7 --output .artifacts/flaker-review.md
+
+# flaker 自体を触った直後に build を強制したいとき
+node ../flaker/scripts/dev-cli.mjs --rebuild run --profile local --changed src/foo.ts
+```
+
+`scripts/dev-cli.mjs` は `dist/cli/main.js` と `dist/moonbit/flaker.js` が無ければ自動で build し、source が `dist` より新しい場合も自動で rebuild します。pnpm script を使いたい場合は `pnpm --dir ../flaker run dev:cli -- ...` でも `INIT_CWD` 経由で呼び出し元 repo を維持します。
+
+複数のローカルコマンドが同じ `.flaker/data.duckdb` を共有する場合は直列で実行してください。DuckDB は single-writer なので、parallel 実行だと lock conflict が起きます。
+
 ## クイックスタート
 
 ### 1. 初期設定
@@ -107,7 +127,7 @@ artifact_name = "playwright-report"
 # テストランナー
 [runner]
 type = "vitest"         # "vitest" | "playwright" | "moontest" | "custom"
-command = "pnpm vitest"
+command = "pnpm exec vitest run"
 
 # 変更影響分析
 [affected]
@@ -220,6 +240,7 @@ flaker sample --strategy random --count 20        # ランダム 20 件
 flaker sample --strategy weighted --count 20      # flaky 優先
 flaker sample --strategy affected                 # 変更影響のみ
 flaker sample --strategy hybrid --count 50        # ハイブリッド（推奨）
+flaker sample --profile local --changed src/foo.ts
 flaker sample --percentage 30                     # 全テストの 30%
 flaker sample --skip-quarantined                  # quarantine 除外
 ```
@@ -238,12 +259,74 @@ flaker sample --skip-quarantined                  # quarantine 除外
 ```bash
 flaker run --strategy hybrid --count 50
 flaker run --strategy affected
+flaker run --profile local --changed src/foo.ts
 flaker run --skip-quarantined
 flaker run --runner actrun                        # actrun 経由で実行
 flaker run --runner actrun --retry                # 失敗箇所のみリトライ
 ```
 
+`--runner actrun` は `[runner].command` ではなく、`[runner.actrun].workflow` に書いた workflow path を使います。
+
+```toml
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test -c playwright.config.ts"
+
+[runner.actrun]
+workflow = ".github/workflows/ci.yml"
+local = true
+trust = true
+# job = "e2e"
+```
+
 実行結果は自動的に DB に格納されます。
+
+### Execution Profiles
+
+`flaker run` と `flaker sample` は execution profile から設定を継承できます:
+
+```toml
+[profile.scheduled]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
+fallback_strategy = "weighted"
+```
+
+ローカルでは次のループが扱いやすいです:
+
+```bash
+flaker affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
+```
+
+`profile.local` で `affected` 選択、`weighted` への fallback、time budget 制御をまとめて扱うのが、dogfood と日常開発の両方で実用的です。
+
+### `flaker collect-coverage` — Coverage edge の取り込み
+
+```bash
+flaker collect-coverage --format istanbul --input coverage/coverage-final.json
+flaker collect-coverage --format playwright --input .artifacts/coverage
+```
+
+`coverage-guided` sampling 用に、テストごとの coverage edge を DuckDB へ取り込みます。directory input も受け付け、重複 edge は insert 前に dedupe されます。
+
+### `flaker train` — GBDT モデル学習
+
+```bash
+flaker train
+flaker train --window-days 30 --num-trees 10 --learning-rate 0.3
+```
+
+蓄積済みの CI / local history から `.flaker/models/gbdt.json` を生成します。local run も低い重みで学習に含め、保存される model には `gbdt` sampling で使う feature 名も入ります。
 
 ### `flaker quarantine` — flaky テストの隔離
 
@@ -271,6 +354,7 @@ flaker bisect --test "should redirect" --suite "tests/login.spec.ts"
 flaker eval
 flaker eval --json
 flaker eval --markdown --window 7
+flaker eval --markdown --window 7 --output .artifacts/flaker-review.md
 ```
 
 テストスイート全体の健全性を 0-100 のスコアで評価します:
@@ -305,7 +389,7 @@ type = "playwright"    # vitest --reporter json は Playwright 互換
 
 [runner]
 type = "vitest"
-command = "pnpm vitest"
+command = "pnpm exec vitest run"
 ```
 
 ### Playwright Test
@@ -410,6 +494,8 @@ flaker run --runner actrun --retry
 flaker collect-local
 ```
 
+workflow path は `[runner.actrun].workflow` から解決されます。.github/workflows/ci.yml のような repo 相対 path を明示し、git worktree を使わないローカル実行では `local = true` を付けてください。
+
 ---
 
 ## 典型的なワークフロー
@@ -420,8 +506,10 @@ flaker collect-local
 # 朝: CI データを最新化
 flaker collect
 
-# コード変更後: 影響テストだけ素早く実行
-flaker run --strategy affected
+# コード変更後: inspect → sample → run を local profile で回す
+flaker affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
 
 # 全体の状態確認
 flaker eval
@@ -450,7 +538,7 @@ flaker quarantine --remove "suite>testName"
 - name: Collect & Analyze
   run: |
     flaker collect --last 7
-    flaker eval --json > flaker-report.json
+    flaker eval --json --output flaker-report.json
     flaker reason --json > flaker-reason.json
 
 - name: Upload analysis

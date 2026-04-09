@@ -29,6 +29,8 @@ describe("runInit", () => {
     expect(content).toContain('[affected]');
     expect(content).toContain('[quarantine]');
     expect(content).toContain('[flaky]');
+    expect(content).toContain('# [runner.actrun]');
+    expect(content).toContain('# workflow = ".github/workflows/ci.yml"');
 
     expect(existsSync(join(dir, ".flaker"))).toBe(true);
   });
@@ -47,7 +49,9 @@ describe("loadConfig", () => {
     expect(config.adapter.artifact_name).toBe("playwright-report");
     expect(config.runner.type).toBe("vitest");
     expect(config.quarantine.auto).toBe(true);
+    expect(config.quarantine.flaky_rate_threshold).toBe(30);
     expect(config.flaky.window_days).toBe(14);
+    expect(config.flaky.detection_threshold).toBe(2);
   });
 
   it("throws if flaker.toml not found", () => {

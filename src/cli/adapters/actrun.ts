@@ -23,12 +23,25 @@ export interface ActrunStep {
 
 export interface ActrunRunOutput {
   run_id: string;
-  conclusion: string;
-  headSha: string;
-  headBranch: string;
-  startedAt: string;
-  completedAt: string;
-  status: string;
+  conclusion?: string;
+  headSha?: string;
+  headBranch?: string;
+  startedAt?: string;
+  completedAt?: string;
+  status?: string;
+  workflow_name?: string;
+  workflow_path?: string;
+  workspace_root?: string;
+  workspace_mode?: string;
+  started_at_ms?: number;
+  finished_at_ms?: number;
+  state?: string;
+  ok?: boolean;
+  exit_code?: number;
+  repository?: string;
+  ref_name?: string;
+  before_sha?: string;
+  after_sha?: string;
   tasks: ActrunTask[];
   steps: ActrunStep[];
 }
@@ -46,9 +59,48 @@ function parseTaskId(id: string): { suite: string; testName: string } {
 
 function mapStatus(task: ActrunTask): TestCaseResult["status"] {
   if (task.code !== 0) return "failed";
-  if (task.status === "ok") return "passed";
+  if (task.status === "ok" || task.status === "success") return "passed";
   if (task.status === "failed") return "failed";
   return "failed";
+}
+
+function resolveTimestampIso(value?: string, epochMs?: number): string | undefined {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  if (typeof epochMs === "number" && Number.isFinite(epochMs)) {
+    return new Date(epochMs).toISOString();
+  }
+  return undefined;
+}
+
+export function resolveActrunConclusion(output: ActrunRunOutput): string {
+  if (output.conclusion) return output.conclusion;
+  if (typeof output.ok === "boolean") return output.ok ? "success" : "failure";
+  if (typeof output.exit_code === "number") return output.exit_code === 0 ? "success" : "failure";
+  return output.state ?? output.status ?? "completed";
+}
+
+export function resolveActrunHeadSha(output: ActrunRunOutput): string {
+  return output.headSha?.trim()
+    || output.after_sha?.trim()
+    || `actrun-${output.run_id}`;
+}
+
+export function resolveActrunHeadBranch(output: ActrunRunOutput): string {
+  return output.headBranch?.trim()
+    || output.ref_name?.trim()
+    || "local";
+}
+
+export function resolveActrunStartedAt(output: ActrunRunOutput): string {
+  return resolveTimestampIso(output.startedAt, output.started_at_ms)
+    ?? new Date(0).toISOString();
+}
+
+export function resolveActrunCompletedAt(output: ActrunRunOutput): string {
+  return resolveTimestampIso(output.completedAt, output.finished_at_ms)
+    ?? resolveActrunStartedAt(output);
 }
 
 export const actrunAdapter: TestResultAdapter = {

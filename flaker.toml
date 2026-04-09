@@ -13,6 +13,10 @@ artifact_name = "vitest-report"
 type = "vitest"
 command = "pnpm exec vitest run"
 
+[affected]
+resolver = "glob"
+config = "flaker.affected.toml"
+
 [sampling]
 strategy = "hybrid"
 percentage = 30

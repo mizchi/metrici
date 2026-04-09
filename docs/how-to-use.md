@@ -14,6 +14,26 @@ pnpm add -D @mizchi/flaker
 pnpm dlx @mizchi/flaker --help
 ```
 
+### Dogfooding From a Sibling Checkout
+
+```bash
+# one-time setup in ../flaker
+pnpm --dir ../flaker install
+
+# from your project root
+node ../flaker/scripts/dev-cli.mjs affected --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs sample --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs run --profile local --changed src/foo.ts
+node ../flaker/scripts/dev-cli.mjs eval --markdown --window 7 --output .artifacts/flaker-review.md
+
+# optional: force rebuild after editing flaker itself
+node ../flaker/scripts/dev-cli.mjs --rebuild run --profile local --changed src/foo.ts
+```
+
+`scripts/dev-cli.mjs` auto-builds `dist/cli/main.js` and `dist/moonbit/flaker.js` when they are missing, and also rebuilds when source files are newer than `dist`. If you prefer pnpm scripts, `pnpm --dir ../flaker run dev:cli -- ...` also preserves the caller repo through `INIT_CWD`.
+
+If multiple local commands share the same `.flaker/data.duckdb`, run them sequentially. DuckDB is single-writer, so parallel dogfood runs can conflict on the DB lock.
+
 ## Quick Start
 
 ### 1. Initialize
@@ -107,7 +127,7 @@ artifact_name = "playwright-report"
 # Test runner
 [runner]
 type = "vitest"         # "vitest" | "playwright" | "moontest" | "custom"
-command = "pnpm vitest"
+command = "pnpm exec vitest run"
 
 # Dependency analysis for affected strategy
 [affected]
@@ -219,6 +239,7 @@ flaker sample --strategy random --count 20        # Uniform random
 flaker sample --strategy weighted --count 20      # Flaky-weighted
 flaker sample --strategy affected                 # Change-affected only
 flaker sample --strategy hybrid --count 50        # Hybrid (recommended)
+flaker sample --profile local --changed src/foo.ts
 flaker sample --percentage 30                     # 30% of all tests
 flaker sample --skip-quarantined                  # Exclude quarantined
 ```
@@ -237,12 +258,74 @@ flaker sample --skip-quarantined                  # Exclude quarantined
 ```bash
 flaker run --strategy hybrid --count 50
 flaker run --strategy affected
+flaker run --profile local --changed src/foo.ts
 flaker run --skip-quarantined
 flaker run --runner actrun                        # Execute via actrun
 flaker run --runner actrun --retry                # Retry failed tests only
 ```
 
+`--runner actrun` reads the workflow file path from `[runner.actrun].workflow`, not from `[runner].command`.
+
+```toml
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test -c playwright.config.ts"
+
+[runner.actrun]
+workflow = ".github/workflows/ci.yml"
+local = true
+trust = true
+# job = "e2e"
+```
+
 Results are automatically stored in the database.
+
+### Execution Profiles
+
+`flaker run` and `flaker sample` can inherit settings from execution profiles:
+
+```toml
+[profile.scheduled]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
+fallback_strategy = "weighted"
+```
+
+The practical local loop is:
+
+```bash
+flaker affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
+```
+
+`profile.local` is where `affected` selection, fallback to `weighted`, and time-budget control come together for dogfooding and day-to-day development.
+
+### `flaker collect-coverage` — Import Coverage Edges
+
+```bash
+flaker collect-coverage --format istanbul --input coverage/coverage-final.json
+flaker collect-coverage --format playwright --input .artifacts/coverage
+```
+
+Imports per-test coverage edges into DuckDB for `coverage-guided` sampling. Directory input is supported and duplicate edges are deduped before insertion.
+
+### `flaker train` — Train the GBDT Model
+
+```bash
+flaker train
+flaker train --window-days 30 --num-trees 10 --learning-rate 0.3
+```
+
+Builds `.flaker/models/gbdt.json` from accumulated CI and local history. The local rows are included with reduced weight, and the saved model includes the feature names used by `gbdt` sampling.
 
 ### `flaker quarantine` — Isolate Flaky Tests
 
@@ -270,6 +353,7 @@ Identifies the commit range where a test became flaky.
 flaker eval
 flaker eval --json
 flaker eval --markdown --window 7
+flaker eval --markdown --window 7 --output .artifacts/flaker-review.md
 ```
 
 Rates overall test suite health on a 0-100 scale:
@@ -304,7 +388,7 @@ type = "playwright"    # vitest --reporter json is Playwright-compatible
 
 [runner]
 type = "vitest"
-command = "pnpm vitest"
+command = "pnpm exec vitest run"
 ```
 
 ### Playwright Test
@@ -409,6 +493,8 @@ flaker run --runner actrun --retry
 flaker collect-local
 ```
 
+Set `[runner.actrun].workflow` to a repo-relative workflow path such as `.github/workflows/ci.yml`. Use `local = true` when the repository is not available as a git worktree to `actrun`.
+
 ---
 
 ## Typical Workflows
@@ -419,8 +505,10 @@ flaker collect-local
 # Morning: sync CI data
 flaker collect
 
-# After code changes: run only affected tests
-flaker run --strategy affected
+# After code changes: inspect, sample, then run with the local profile
+flaker affected --changed src/foo.ts
+flaker sample --profile local --changed src/foo.ts
+flaker run --profile local --changed src/foo.ts
 
 # Check overall status
 flaker eval
@@ -449,7 +537,7 @@ flaker quarantine --remove "suite>testName"
 - name: Collect & Analyze
   run: |
     flaker collect --last 7
-    flaker eval --json > flaker-report.json
+    flaker eval --json --output flaker-report.json
     flaker reason --json > flaker-reason.json
 
 - name: Upload analysis

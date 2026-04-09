@@ -1,7 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { actrunAdapter, extractTestReportsFromArtifacts } from "../adapters/actrun.js";
+import {
+  actrunAdapter,
+  extractTestReportsFromArtifacts,
+  resolveActrunCompletedAt,
+  resolveActrunConclusion,
+  resolveActrunHeadBranch,
+  resolveActrunStartedAt,
+  type ActrunRunOutput,
+} from "../adapters/actrun.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
 import { junitAdapter } from "../adapters/junit.js";
 import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
@@ -69,7 +77,7 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
 
     // Get full run details
     const viewJson = safeExec("actrun", ["run", "view", entry.run_id, "--json"]);
-    const output = JSON.parse(viewJson);
+    const output = JSON.parse(viewJson) as ActrunRunOutput;
 
     // Try to extract richer test reports from actrun artifacts
     const workspace = opts.workspace ?? process.cwd();
@@ -85,8 +93,8 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
     if (testCases.length === 0) {
       testCases = actrunAdapter.parse(viewJson);
     }
-    const startedAt = new Date(output.startedAt);
-    const completedAt = new Date(output.completedAt);
+    const startedAt = new Date(resolveActrunStartedAt(output));
+    const completedAt = new Date(resolveActrunCompletedAt(output));
     const durationMs = completedAt.getTime() - startedAt.getTime();
 
     // Create workflow run
@@ -94,11 +102,11 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
     const workflowRun: WorkflowRun = {
       id: runId,
       repo: "local/local",
-      branch: output.headBranch ?? "local",
+      branch: resolveActrunHeadBranch(output),
       commitSha,
       event: "actrun-local",
       source: "local",
-      status: output.conclusion ?? "completed",
+      status: resolveActrunConclusion(output),
       createdAt: startedAt,
       durationMs,
     };

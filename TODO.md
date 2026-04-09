@@ -9,6 +9,24 @@
 - [x] `flaker doctor` コマンドを追加し、DuckDB/MoonBit の実行環境チェックを 1 コマンドで確認可能にする
 - [x] CI で「MoonBit あり / なし」の 2 パターンを回し、フォールバック経路を常時検証する
 
+## sample-webapp-2026 で見えた UX 改善
+
+- [x] しきい値設定の単位を docs / init / 実装で統一する
+  - `README` / `docs/how-to-use.ja.md` は `%` 前提だが、`src/cli/config.ts` の default は `0.3` / `0.1` になっている
+  - `quarantine.flaky_rate_threshold` と `flaky.detection_threshold` の unit を明示し、`doctor` / `check` で不自然な値を警告したい
+
+- [x] `flaker eval` に `--output <file>` を追加する
+  - sample の nightly workflow では `pnpm flaker:eval:markdown > .artifacts/flaker-review.md` の shell redirect が必要だった
+  - `collect` / `train` と同じく artifact 出力を CLI option で完結させたい
+
+- [x] sibling repo を使う dogfood 導線を公式化する
+  - sample では `scripts/run-flaker.mjs` で `../flaker/dist/cli/main.js` の存在確認と build をラップしている
+  - side-by-side checkout 前提の README と、build 済み CLI 依存を減らす実行導線が欲しい
+
+- [x] cold-start fallback の説明を `run` 出力に出す
+  - sample の初回 `run --profile scheduled` では `cold-start-listed-tests` に落ちても、何が起きたかを README と突き合わせないと分かりづらい
+  - 初期学習前の挙動、必要 run 数、次に取るべき action を CLI で案内したい
+
 ## crater 由来機能の整理と MoonBit 移行
 
 ### 分類軸

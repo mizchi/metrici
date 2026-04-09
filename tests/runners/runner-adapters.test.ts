@@ -35,13 +35,13 @@ describe("VitestRunner", () => {
         name: "/path/to/file.test.ts",
         assertionResults: [
           {
-            fullName: "math > adds numbers",
+            fullName: "math adds numbers",
             status: "passed",
             duration: 5,
             failureMessages: [],
           },
           {
-            fullName: "math > subtracts numbers",
+            fullName: "math subtracts numbers",
             status: "failed",
             duration: 10,
             failureMessages: ["Expected 3 but got 4"],
@@ -51,11 +51,11 @@ describe("VitestRunner", () => {
     ],
   });
 
-  it("execute builds correct command with -t and --reporter json", async () => {
+  it("execute normalizes the vitest subcommand before appending run", async () => {
     let capturedCmd = "";
     let capturedArgs: string[] = [];
     const runner = new VitestRunner({
-      command: "pnpm vitest",
+      command: "pnpm exec vitest run",
       safeExec: (cmd, args) => {
         capturedCmd = cmd;
         capturedArgs = args;
@@ -64,15 +64,19 @@ describe("VitestRunner", () => {
     });
 
     await runner.execute([
-      { suite: "math", testName: "adds numbers" },
-      { suite: "math", testName: "subtracts numbers" },
+      { suite: "/path/to/file.test.ts", testName: "math adds numbers" },
+      { suite: "/path/to/file.test.ts", testName: "math subtracts numbers" },
     ]);
 
     expect(capturedCmd).toBe("pnpm");
-    expect(capturedArgs).toContain("run");
-    expect(capturedArgs).toContain("math");
-    expect(capturedArgs).toContain("--reporter");
-    expect(capturedArgs).toContain("json");
+    expect(capturedArgs).toEqual([
+      "exec",
+      "vitest",
+      "run",
+      "/path/to/file.test.ts",
+      "--reporter",
+      "json",
+    ]);
   });
 
   it("execute parses vitest JSON output", async () => {
@@ -81,19 +85,19 @@ describe("VitestRunner", () => {
     });
 
     const result = await runner.execute([
-      { suite: "math", testName: "adds numbers" },
-      { suite: "math", testName: "subtracts numbers" },
+      { suite: "/path/to/file.test.ts", testName: "math adds numbers" },
+      { suite: "/path/to/file.test.ts", testName: "math subtracts numbers" },
     ]);
 
     expect(result.results).toHaveLength(2);
     expect(result.results[0]).toMatchObject({
-      suite: "math",
-      testName: "adds numbers",
+      suite: "/path/to/file.test.ts",
+      testName: "math adds numbers",
       status: "passed",
     });
     expect(result.results[1]).toMatchObject({
-      suite: "math",
-      testName: "subtracts numbers",
+      suite: "/path/to/file.test.ts",
+      testName: "math subtracts numbers",
       status: "failed",
       errorMessage: "Expected 3 but got 4",
     });
@@ -112,23 +116,29 @@ describe("VitestRunner", () => {
     expect(result.results).toEqual([]);
   });
 
-  it("listTests builds correct command", async () => {
+  it("listTests builds correct command for vitest list", async () => {
     let capturedCmd = "";
     const runner = new VitestRunner({
-      command: "npx vitest",
+      command: "npx vitest run",
       exec: (cmd) => {
         capturedCmd = cmd;
         return {
           exitCode: 0,
-          stdout: JSON.stringify(["/path/a.test.ts", "/path/b.test.ts"]),
+          stdout: [
+            "/path/a.test.ts > math > adds numbers",
+            "/path/b.test.ts > math > subtracts numbers",
+          ].join("\n"),
           stderr: "",
         };
       },
     });
 
     const ids = await runner.listTests();
-    expect(capturedCmd).toBe("npx vitest --list --reporter json");
-    expect(ids).toHaveLength(2);
+    expect(capturedCmd).toBe("npx vitest list --reporter json");
+    expect(ids).toEqual([
+      { suite: "/path/a.test.ts", testName: "math adds numbers", taskId: "/path/a.test.ts" },
+      { suite: "/path/b.test.ts", testName: "math subtracts numbers", taskId: "/path/b.test.ts" },
+    ]);
   });
 
   it("execute escapes special characters in test names", async () => {
@@ -148,14 +158,14 @@ describe("VitestRunner", () => {
 // ── parseVitestJson ──────────────────────────────────────────
 
 describe("parseVitestJson", () => {
-  it("parses nested suite names", () => {
+  it("preserves file path as suite and full test name", () => {
     const json = JSON.stringify({
       testResults: [
         {
           name: "/file.test.ts",
           assertionResults: [
             {
-              fullName: "outer > inner > test",
+              fullName: "outer inner test",
               status: "passed",
               duration: 1,
             },
@@ -164,8 +174,34 @@ describe("parseVitestJson", () => {
       ],
     });
     const results = parseVitestJson(json);
-    expect(results[0].suite).toBe("outer > inner");
-    expect(results[0].testName).toBe("test");
+    expect(results[0]).toMatchObject({
+      suite: "/file.test.ts",
+      testName: "outer inner test",
+      taskId: "/file.test.ts",
+      status: "passed",
+    });
+  });
+});
+
+describe("parseVitestList", () => {
+  it("parses vitest list text output", () => {
+    const stdout = [
+      "tests/math.test.ts > math > adds numbers",
+      "tests/math.test.ts > math > subtracts numbers",
+    ].join("\n");
+
+    expect(parseVitestList(stdout)).toEqual([
+      {
+        suite: "tests/math.test.ts",
+        testName: "math adds numbers",
+        taskId: "tests/math.test.ts",
+      },
+      {
+        suite: "tests/math.test.ts",
+        testName: "math subtracts numbers",
+        taskId: "tests/math.test.ts",
+      },
+    ]);
   });
 });
 

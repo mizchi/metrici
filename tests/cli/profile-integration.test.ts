@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { detectProfileName, resolveProfile } from "../../src/cli/profile.js";
+import {
+  detectProfileName,
+  resolveProfile,
+  resolveFallbackSamplingMode,
+} from "../../src/cli/profile.js";
 import type { ProfileConfig, SamplingConfig } from "../../src/cli/config.js";
 
 describe("profile integration", () => {
@@ -53,6 +57,7 @@ describe("profile integration", () => {
     expect(p.strategy).toBe("affected");
     expect(p.max_duration_seconds).toBe(60);
     expect(p.fallback_strategy).toBe("weighted");
+    expect(resolveFallbackSamplingMode(p)).toBe("weighted");
   });
 
   it("unknown profile falls back to sampling config", () => {

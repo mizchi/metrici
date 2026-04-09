@@ -16,7 +16,7 @@ import {
 
 interface VitestAssertionResult {
   fullName: string;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "skipped" | "pending" | "todo";
   duration: number;
   failureMessages?: string[];
 }
@@ -35,13 +35,18 @@ export function parseVitestJson(stdout: string): TestCaseResult[] {
   const results: TestCaseResult[] = [];
   for (const file of data.testResults) {
     for (const assertion of file.assertionResults) {
-      const parts = assertion.fullName.split(" > ");
-      const testName = parts.pop() ?? assertion.fullName;
-      const suite = parts.join(" > ") || file.name;
+      if (assertion.status === "pending" || assertion.status === "todo") {
+        continue;
+      }
       results.push({
-        suite,
-        testName,
-        status: assertion.status === "passed" ? "passed" : "failed",
+        suite: file.name,
+        testName: assertion.fullName,
+        taskId: file.name,
+        status: assertion.status === "passed"
+          ? "passed"
+          : assertion.status === "skipped"
+          ? "skipped"
+          : "failed",
         durationMs: assertion.duration ?? 0,
         retryCount: 0,
         errorMessage: assertion.failureMessages?.length
@@ -54,8 +59,51 @@ export function parseVitestJson(stdout: string): TestCaseResult[] {
 }
 
 export function parseVitestList(stdout: string): TestId[] {
-  const files: string[] = JSON.parse(stdout);
-  return files.map((f) => ({ suite: f, testName: f }));
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  try {
+    const files: unknown = JSON.parse(trimmed);
+    if (Array.isArray(files) && files.every((entry) => typeof entry === "string")) {
+      return files.map((file) => ({
+        suite: file,
+        testName: file,
+        taskId: file,
+      }));
+    }
+  } catch {
+    // Fall through to modern Vitest text output parsing.
+  }
+
+  return trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(" > ").map((part) => part.trim()).filter(Boolean);
+      const suite = parts.shift() ?? line;
+      const testName = parts.length > 0 ? parts.join(" ") : suite;
+      return {
+        suite,
+        testName,
+        taskId: suite,
+      };
+    });
+}
+
+function normalizeVitestArgs(args: string[], subcommand: "run" | "list"): string[] {
+  const trimmed = [...args];
+  while (trimmed.length > 0) {
+    const tail = trimmed[trimmed.length - 1];
+    if (tail === "run" || tail === "list") {
+      trimmed.pop();
+      continue;
+    }
+    break;
+  }
+  return [...trimmed, subcommand];
 }
 
 export class VitestRunner implements RunnerAdapter {
@@ -72,7 +120,7 @@ export class VitestRunner implements RunnerAdapter {
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
     const suiteFiles = [...new Set(tests.map((t) => t.suite))];
     const { cmd, args } = parseBaseCommand(this.baseCommand);
-    const runArgs = [...args, "run", ...suiteFiles, "--reporter", "json"];
+    const runArgs = [...normalizeVitestArgs(args, "run"), ...suiteFiles, "--reporter", "json"];
     if (opts?.workers) {
       runArgs.push("--pool=threads", `--poolOptions.threads.maxThreads=${opts.workers}`);
     }
@@ -83,8 +131,8 @@ export class VitestRunner implements RunnerAdapter {
     let results: TestCaseResult[] = [];
     try {
       const all = parseVitestJson(stdout);
-      const selectedNames = new Set(tests.map((t) => t.testName));
-      results = all.filter((r) => selectedNames.has(r.testName));
+      const selectedKeys = new Set(tests.map((t) => `${t.suite}\0${t.testName}`));
+      results = all.filter((r) => selectedKeys.has(`${r.suite}\0${r.testName}`));
     } catch {
       // parse failure — return empty results
     }
@@ -93,7 +141,11 @@ export class VitestRunner implements RunnerAdapter {
 
   async listTests(opts?: ExecuteOpts): Promise<TestId[]> {
     const { cmd, args } = parseBaseCommand(this.baseCommand);
-    const { stdout } = this.safeExecFn(cmd, [...args, "--list", "--reporter", "json"], opts);
+    const { stdout } = this.safeExecFn(
+      cmd,
+      [...normalizeVitestArgs(args, "list"), "--reporter", "json"],
+      opts,
+    );
     return parseVitestList(stdout);
   }
 }

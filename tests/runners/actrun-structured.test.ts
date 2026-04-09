@@ -74,4 +74,57 @@ describe("ActrunRunner structured result", () => {
     runner.runWithResult();
     expect(commands[0]).toContain("--job test");
   });
+
+  it("supports current actrun run view schema", () => {
+    const runViewJson = JSON.stringify({
+      run_id: "run-1",
+      workflow_name: "flaker-local",
+      workflow_path: ".github/workflows/flaker-local.yml",
+      workspace_root: ".",
+      workspace_mode: "local",
+      started_at_ms: 1775644380000,
+      finished_at_ms: 1775644385000,
+      state: "completed",
+      ok: true,
+      exit_code: 0,
+      repository: "",
+      ref_name: "",
+      before_sha: "",
+      after_sha: "",
+      tasks: [
+        {
+          id: "e2e/step_4",
+          kind: "run",
+          status: "success",
+          code: 0,
+          shell: "bash",
+          stdout_path: "tasks/e2e__step_4.stdout.log",
+        },
+      ],
+      steps: [],
+    });
+
+    const runner = new ActrunRunner({
+      workflow: ".github/workflows/flaker-local.yml",
+      exec: (cmd) => {
+        if (cmd.includes("workflow run")) {
+          return [
+            "run_id=run-1",
+            "workflow=flaker-local",
+            "state=completed",
+          ].join("\n");
+        }
+        return runViewJson;
+      },
+    });
+
+    const result = runner.runWithResult();
+    expect(result.runId).toBe("run-1");
+    expect(result.conclusion).toBe("success");
+    expect(result.headSha).toBe("actrun-run-1");
+    expect(result.headBranch).toBe("local");
+    expect(result.durationMs).toBe(5000);
+    expect(result.startedAt).toBe(new Date(1775644380000).toISOString());
+    expect(result.completedAt).toBe(new Date(1775644385000).toISOString());
+  });
 });
