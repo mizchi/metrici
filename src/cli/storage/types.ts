@@ -107,6 +107,7 @@ export interface CollectedArtifactRecord {
 }
 
 export interface SamplingRunRecord {
+  id?: number;
   commitSha?: string | null;
   commandKind: "sample" | "run";
   strategy: string;
@@ -160,15 +161,21 @@ export interface CoFailureQueryOpts {
 export interface ExportResult {
   testResultsCount: number;
   commitChangesCount: number;
+  samplingRunsCount: number;
+  samplingRunTestsCount: number;
   workflowRunPath: string;
   testResultsPath: string;
   commitChangesPath: string;
+  samplingRunsPath: string;
+  samplingRunTestsPath: string;
 }
 
 export interface ImportResult {
   workflowRunsImported: number;
   testResultsImported: number;
   commitChangesImported: number;
+  samplingRunsImported: number;
+  samplingRunTestsImported: number;
 }
 
 export interface MetricStore {

@@ -674,4 +674,116 @@ describe("collectWorkflowRuns", () => {
     );
     expect(tests[0].count).toBe(4);
   });
+
+  it("filters workflow runs by configured workflow path", async () => {
+    const mockRuns = [
+      {
+        id: 3001,
+        head_branch: "main",
+        head_sha: "abc3001",
+        event: "push",
+        conclusion: "success",
+        created_at: "2025-06-10T00:00:00Z",
+        run_started_at: "2025-06-10T00:00:00Z",
+        updated_at: "2025-06-10T00:05:00Z",
+        path: ".github/workflows/ci.yml",
+      },
+      {
+        id: 3002,
+        head_branch: "main",
+        head_sha: "abc3002",
+        event: "push",
+        conclusion: "success",
+        created_at: "2025-06-10T00:10:00Z",
+        run_started_at: "2025-06-10T00:10:00Z",
+        updated_at: "2025-06-10T00:15:00Z",
+        path: ".github/workflows/core-fallback-matrix.yml",
+      },
+    ];
+
+    const github = createMockGitHubClient(mockRuns, {
+      3001: [{ name: "playwright-report", content: fixtureReport }],
+    });
+
+    const result = await collectWorkflowRuns({
+      store,
+      github,
+      repo: "owner/repo",
+      adapterType: "playwright",
+      artifactName: "playwright-report",
+      workflowPaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(result.runsCollected).toBe(1);
+    expect(result.testsCollected).toBe(4);
+    expect(result.pendingArtifactRuns).toBe(0);
+    expect(result.pendingArtifactRunIds).toEqual([]);
+
+    const runs = await store.raw<{ id: number }>(
+      "SELECT id FROM workflow_runs ORDER BY id",
+    );
+    expect(runs.map((row) => Number(row.id))).toEqual([3001]);
+  });
+
+  it("treats completed non-success runs without artifacts as failures", async () => {
+    const mockRuns = [
+      {
+        id: 3010,
+        head_branch: "envrc",
+        head_sha: "abc3010",
+        event: "pull_request",
+        status: "completed",
+        conclusion: "action_required",
+        created_at: "2025-06-10T00:20:00Z",
+        run_started_at: "2025-06-10T00:20:00Z",
+        updated_at: "2025-06-10T00:25:00Z",
+        path: ".github/workflows/ci.yml",
+      },
+    ];
+
+    const github = createMockGitHubClient(mockRuns, {});
+
+    const firstResult = await collectWorkflowRuns({
+      store,
+      github,
+      repo: "owner/repo",
+      adapterType: "playwright",
+      artifactName: "playwright-report",
+      workflowPaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(firstResult.runsCollected).toBe(0);
+    expect(firstResult.testsCollected).toBe(0);
+    expect(firstResult.pendingArtifactRuns).toBe(0);
+    expect(firstResult.pendingArtifactRunIds).toEqual([]);
+    expect(firstResult.failedRuns).toBe(1);
+    expect(firstResult.failedRunIds).toEqual([3010]);
+    expect(firstResult.failures).toEqual([
+      {
+        runId: 3010,
+        message:
+          'artifact "playwright-report" was not uploaded for completed workflow run (conclusion=action_required)',
+      },
+    ]);
+
+    const collected = await store.raw<{ count: number }>(
+      "SELECT COUNT(*)::INTEGER AS count FROM collected_artifacts WHERE workflow_run_id = ? AND adapter_type = ?",
+      [3010, "playwright"],
+    );
+    expect(collected[0].count).toBe(1);
+
+    const secondResult = await collectWorkflowRuns({
+      store,
+      github,
+      repo: "owner/repo",
+      adapterType: "playwright",
+      artifactName: "playwright-report",
+      workflowPaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(secondResult.runsCollected).toBe(0);
+    expect(secondResult.testsCollected).toBe(0);
+    expect(secondResult.pendingArtifactRuns).toBe(0);
+    expect(secondResult.failedRuns).toBe(0);
+  });
 });

@@ -13,6 +13,7 @@ export interface SamplingRunTestInput {
 }
 
 export interface RecordSamplingRunFromSummaryOpts {
+  id?: number;
   commitSha?: string | null;
   commandKind: "sample" | "run";
   summary: SamplingSummary;
@@ -26,6 +27,7 @@ export async function recordSamplingRunFromSummary(
   opts: RecordSamplingRunFromSummaryOpts,
 ): Promise<void> {
   const samplingRunId = await store.recordSamplingRun({
+    id: opts.id,
     commitSha: opts.commitSha ?? null,
     commandKind: opts.commandKind,
     strategy: opts.summary.strategy,

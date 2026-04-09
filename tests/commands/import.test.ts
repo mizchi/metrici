@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import { runImport } from "../../src/cli/commands/import.js";
+import { tmpdir } from "node:os";
 
 describe("import command", () => {
   let store: DuckDBStore;
@@ -43,6 +44,58 @@ describe("import command", () => {
       repo: "mizchi/crater",
     });
     expect(result.testsImported).toBe(5);
+  });
+
+  it("imports Vitest JSON report", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "flaker-import-vitest-"));
+    const fixture = resolve(dir, "vitest-report.json");
+    writeFileSync(fixture, JSON.stringify({
+      testResults: [
+        {
+          name: "tests/commands/sample.test.ts",
+          assertionResults: [
+            {
+              ancestorTitles: ["sample command"],
+              fullName: "sample command random returns correct count",
+              status: "passed",
+              title: "random returns correct count",
+              duration: 42.5,
+              failureMessages: [],
+            },
+            {
+              ancestorTitles: ["sample command"],
+              fullName: "sample command weighted fails",
+              status: "failed",
+              title: "weighted fails",
+              duration: 100,
+              failureMessages: ["Expected 5 but got 3"],
+            },
+          ],
+        },
+      ],
+    }), "utf-8");
+
+    try {
+      const result = await runImport({
+        store,
+        filePath: fixture,
+        adapterType: "vitest",
+        commitSha: "vitest123",
+        branch: "main",
+        repo: "mizchi/flaker",
+      });
+      expect(result.testsImported).toBe(2);
+
+      const rows = await store.raw<{ suite: string; status: string }>(
+        "SELECT suite, status FROM test_results ORDER BY test_name",
+      );
+      expect(rows).toEqual([
+        { suite: "tests/commands/sample.test.ts", status: "passed" },
+        { suite: "tests/commands/sample.test.ts", status: "failed" },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("imports built-in vrt migration reports", async () => {

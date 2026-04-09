@@ -40,6 +40,7 @@ export interface ProfileConfig {
 export interface FlakerConfig {
   repo: { owner: string; name: string };
   storage: { path: string };
+  collect?: { workflow_paths?: string[] };
   adapter: { type: string; command?: string; artifact_name?: string };
   runner: {
     type: string;
@@ -75,6 +76,7 @@ export interface LoadedConfigDiagnostics {
 const DEFAULT_CONFIG: FlakerConfig = {
   repo: { owner: "", name: "" },
   storage: { path: ".flaker/data" },
+  collect: { workflow_paths: [] },
   adapter: { type: "playwright" },
   runner: { type: "vitest", command: "pnpm test" },
   affected: { resolver: "git", config: "" },

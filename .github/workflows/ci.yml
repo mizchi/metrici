@@ -96,6 +96,7 @@ jobs:
 
   self-host-advisory:
     if: github.event_name == 'pull_request'
+    needs: test
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -138,6 +139,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node dist/cli/main.js collect --last 30 --output .artifacts/collect.txt
 
+      - name: Download historical self-host metrics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: >
+          node scripts/download-self-host-metrics.mjs
+          --out .artifacts/self-host-metrics
+          --days 30
+
+      - name: Import historical self-host metrics
+        run: node dist/cli/main.js import-parquet .artifacts/self-host-metrics
+
       - name: Run flaker PR advisory
         id: flaker_run
         continue-on-error: true
@@ -148,6 +161,21 @@ jobs:
           exit_code=$?
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           exit $exit_code
+
+      - name: Download current CI vitest report
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: vitest-report
+          path: .self-host/current-ci
+
+      - name: Import current CI vitest report
+        if: always()
+        run: >
+          node dist/cli/main.js import .self-host/current-ci/vitest-report.json
+          --adapter vitest
+          --commit "${{ github.event.pull_request.head.sha }}"
+          --branch "${{ github.head_ref }}"
 
       - name: Snapshot KPI
         if: always()
@@ -215,4 +243,12 @@ jobs:
         with:
           name: flaker-self-host-pr-advisory
           path: .artifacts
+          if-no-files-found: warn
+
+      - name: Upload self-host metrics parquet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaker-self-host-metrics
+          path: .flaker/artifacts
           if-no-files-found: warn

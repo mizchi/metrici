@@ -48,6 +48,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node dist/cli/main.js collect --last 30 --output .artifacts/collect.txt
 
+      - name: Download historical self-host metrics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: >
+          node scripts/download-self-host-metrics.mjs
+          --out .artifacts/self-host-metrics
+          --days 30
+
+      - name: Import historical self-host metrics
+        run: node dist/cli/main.js import-parquet .artifacts/self-host-metrics
+
       - name: Run flaker scheduled profile
         id: flaker_run
         continue-on-error: true
@@ -144,6 +156,14 @@ jobs:
         with:
           name: flaker-self-host-nightly
           path: .artifacts
+          if-no-files-found: warn
+
+      - name: Upload self-host metrics parquet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaker-self-host-metrics
+          path: .flaker/artifacts
           if-no-files-found: warn
 
       - name: Fail when scheduled run fails

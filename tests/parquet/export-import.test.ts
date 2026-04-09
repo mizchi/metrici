@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
+import { recordSamplingRunFromSummary } from "../../src/cli/commands/sampling-run.js";
 
 describe("Parquet export and import", () => {
   let store: DuckDBStore;
@@ -36,6 +37,36 @@ describe("Parquet export and import", () => {
         commitSha: "sha1", variant: null, createdAt: new Date("2026-04-01"),
       },
     ]);
+    await recordSamplingRunFromSummary(store, {
+      id: 1,
+      commitSha: "sha1",
+      commandKind: "run",
+      summary: {
+        strategy: "hybrid",
+        requestedCount: 2,
+        requestedPercentage: null,
+        seed: 7,
+        changedFiles: ["src/foo.ts"],
+        candidateCount: 4,
+        selectedCount: 2,
+        sampleRatio: 50,
+        estimatedSavedTests: 2,
+        estimatedSavedMinutes: 1.1,
+        fallbackReason: null,
+      },
+      tests: [
+        {
+          suite: "tests/login.spec.ts",
+          testName: "login works",
+          testId: "tests/login.spec.ts::login works",
+        },
+        {
+          suite: "tests/signup.spec.ts",
+          testName: "signup works",
+          testId: "tests/signup.spec.ts::signup works",
+        },
+      ],
+    });
   });
 
   afterEach(async () => {
@@ -65,6 +96,8 @@ describe("Parquet export and import", () => {
     expect(importResult.workflowRunsImported).toBe(1);
     expect(importResult.testResultsImported).toBe(2);
     expect(importResult.commitChangesImported).toBe(2);
+    expect(importResult.samplingRunsImported).toBe(1);
+    expect(importResult.samplingRunTestsImported).toBe(2);
 
     // Verify data integrity
     const runs = await store2.raw<{ cnt: number }>(
@@ -85,6 +118,21 @@ describe("Parquet export and import", () => {
     );
     expect(changes).toHaveLength(2);
     expect(changes[0].file_path).toBe("src/bar.ts");
+
+    const samplingRuns = await store2.raw<{ id: number; commit_sha: string; selected_count: number }>(
+      "SELECT id::INTEGER AS id, commit_sha, selected_count::INTEGER AS selected_count FROM sampling_runs",
+    );
+    expect(samplingRuns).toEqual([
+      { id: 1, commit_sha: "sha1", selected_count: 2 },
+    ]);
+
+    const samplingTests = await store2.raw<{ ordinal: number; suite: string }>(
+      "SELECT ordinal::INTEGER AS ordinal, suite FROM sampling_run_tests ORDER BY ordinal",
+    );
+    expect(samplingTests).toEqual([
+      { ordinal: 0, suite: "tests/login.spec.ts" },
+      { ordinal: 1, suite: "tests/signup.spec.ts" },
+    ]);
 
     await store2.close();
   });

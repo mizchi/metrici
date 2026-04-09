@@ -398,6 +398,8 @@ program
           total_count: response.data.total_count,
           workflow_runs: response.data.workflow_runs.map((run) => ({
             id: run.id,
+            path: (run as { path?: string }).path,
+            status: run.status ?? undefined,
             head_branch: run.head_branch ?? "",
             head_sha: run.head_sha,
             event: run.event,
@@ -445,6 +447,7 @@ program
         artifactName: config.adapter.artifact_name,
         customCommand: config.adapter.command,
         storagePath: config.storage.path,
+        workflowPaths: config.collect?.workflow_paths,
       });
       const formatted = formatCollectSummary(result, opts.json ? "json" : "text");
       console.log(formatted);
@@ -754,6 +757,7 @@ addSamplingOptions(
           }
         }
         await recordSamplingRunFromSummary(store, {
+          id: workflowRunId,
           commitSha,
           commandKind: "run",
           summary: runResult.samplingSummary,
@@ -761,6 +765,10 @@ addSamplingOptions(
           holdoutTests: runResult.holdoutTests,
           durationMs: runResult.durationMs,
         });
+        if (config.storage.path) {
+          const { exportRunParquet } = await import("./commands/export-parquet.js");
+          await exportRunParquet(store, workflowRunId, config.storage.path);
+        }
         if (runResult.exitCode !== 0) {
           process.exit(1);
         }
@@ -1281,7 +1289,7 @@ program
 program
   .command("import <file>")
   .description("Import a local test report file")
-  .option("--adapter <type>", "Adapter type (playwright, junit, vrt-migration, vrt-bench, custom)", "playwright")
+  .option("--adapter <type>", "Adapter type (vitest, playwright, junit, vrt-migration, vrt-bench, custom)", "playwright")
   .option("--custom-command <cmd>", "Custom adapter command (required with --adapter custom)")
   .option("--commit <sha>", "Commit SHA")
   .option("--branch <branch>", "Branch name")
@@ -1300,6 +1308,23 @@ program
         repo: `${config.repo.owner}/${config.repo.name}`,
       });
       console.log(`Imported ${result.testsImported} test results`);
+    } finally {
+      await store.close();
+    }
+  });
+
+program
+  .command("import-parquet <dir>")
+  .description("Import flaker parquet artifacts from a directory")
+  .action(async (dir: string) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const result = await store.importFromParquetDir(resolve(dir));
+      console.log(
+        `Imported ${result.workflowRunsImported} workflow runs, ${result.testResultsImported} test results, ${result.commitChangesImported} commit changes, ${result.samplingRunsImported} sampling runs, ${result.samplingRunTestsImported} sampling run tests`,
+      );
     } finally {
       await store.close();
     }

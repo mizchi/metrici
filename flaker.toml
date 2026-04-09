@@ -5,6 +5,9 @@ name = "flaker"
 [storage]
 path = ".flaker/data.duckdb"
 
+[collect]
+workflow_paths = [".github/workflows/ci.yml"]
+
 [adapter]
 type = "vitest"
 artifact_name = "vitest-report"

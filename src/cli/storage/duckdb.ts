@@ -136,10 +136,9 @@ export class DuckDBStore implements MetricStore {
   }
 
   async recordSamplingRun(run: SamplingRunRecord): Promise<number> {
-    const [idRow] = await this.all(
+    const id = run.id ?? Number((await this.all(
       `SELECT nextval('sampling_runs_id_seq')::BIGINT AS id`,
-    );
-    const id = Number(idRow.id);
+    ))[0].id);
     await this.run(
       `INSERT INTO sampling_runs (
          id,
@@ -524,6 +523,8 @@ export class DuckDBStore implements MetricStore {
     const wrPath = join(outputDir, `workflow_run_${workflowRunId}.parquet`);
     const trPath = join(outputDir, `test_results_${workflowRunId}.parquet`);
     const ccPath = join(outputDir, `commit_changes_${workflowRunId}.parquet`);
+    const srPath = join(outputDir, `sampling_runs_${workflowRunId}.parquet`);
+    const srtPath = join(outputDir, `sampling_run_tests_${workflowRunId}.parquet`);
 
     // Get commit_sha for this run
     const [run] = await this.all(
@@ -562,12 +563,34 @@ export class DuckDBStore implements MetricStore {
       `COPY (SELECT * FROM commit_changes WHERE commit_sha = '${safeSha}') TO '${safeCcPath}' (FORMAT PARQUET)`,
     );
 
+    const safeSrPath = this.sanitizeSqlLiteral(srPath);
+    const safeSrtPath = this.sanitizeSqlLiteral(srtPath);
+    const [srCount] = await this.all(
+      `SELECT COUNT(*)::INTEGER AS cnt FROM sampling_runs WHERE id = ?`,
+      [workflowRunId],
+    );
+    await this.run(
+      `COPY (SELECT * FROM sampling_runs WHERE id = ${safeRunId}) TO '${safeSrPath}' (FORMAT PARQUET)`,
+    );
+
+    const [srtCount] = await this.all(
+      `SELECT COUNT(*)::INTEGER AS cnt FROM sampling_run_tests WHERE sampling_run_id = ?`,
+      [workflowRunId],
+    );
+    await this.run(
+      `COPY (SELECT * FROM sampling_run_tests WHERE sampling_run_id = ${safeRunId}) TO '${safeSrtPath}' (FORMAT PARQUET)`,
+    );
+
     return {
       testResultsCount: trCount.cnt,
       commitChangesCount: ccCount.cnt,
+      samplingRunsCount: srCount.cnt,
+      samplingRunTestsCount: srtCount.cnt,
       workflowRunPath: wrPath,
       testResultsPath: trPath,
       commitChangesPath: ccPath,
+      samplingRunsPath: srPath,
+      samplingRunTestsPath: srtPath,
     };
   }
 
@@ -579,15 +602,19 @@ export class DuckDBStore implements MetricStore {
     // (test_results has FK to workflow_runs)
     const priorityOrder = (name: string): number => {
       if (name.startsWith("workflow_run_")) return 0;
-      if (name.startsWith("commit_changes_")) return 1;
-      if (name.startsWith("test_results_")) return 2;
-      return 3;
+      if (name.startsWith("sampling_runs_")) return 1;
+      if (name.startsWith("commit_changes_")) return 2;
+      if (name.startsWith("test_results_")) return 3;
+      if (name.startsWith("sampling_run_tests_")) return 4;
+      return 5;
     };
     files.sort((a, b) => priorityOrder(a) - priorityOrder(b));
 
     let workflowRunsImported = 0;
     let testResultsImported = 0;
     let commitChangesImported = 0;
+    let samplingRunsImported = 0;
+    let samplingRunTestsImported = 0;
 
     for (const file of files) {
       // Validate filename to prevent path traversal/SQL injection
@@ -603,6 +630,13 @@ export class DuckDBStore implements MetricStore {
         );
         const [after] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM workflow_runs");
         workflowRunsImported += after.cnt - before.cnt;
+      } else if (file.startsWith("sampling_runs_")) {
+        const [before] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM sampling_runs");
+        await this.exec(
+          `INSERT OR IGNORE INTO sampling_runs SELECT * FROM read_parquet('${safePath}')`,
+        );
+        const [after] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM sampling_runs");
+        samplingRunsImported += after.cnt - before.cnt;
       } else if (file.startsWith("test_results_")) {
         const [before] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM test_results");
         await this.exec(
@@ -617,10 +651,23 @@ export class DuckDBStore implements MetricStore {
         );
         const [after] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM commit_changes");
         commitChangesImported += after.cnt - before.cnt;
+      } else if (file.startsWith("sampling_run_tests_")) {
+        const [before] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM sampling_run_tests");
+        await this.exec(
+          `INSERT OR IGNORE INTO sampling_run_tests SELECT * FROM read_parquet('${safePath}')`,
+        );
+        const [after] = await this.all("SELECT COUNT(*)::INTEGER AS cnt FROM sampling_run_tests");
+        samplingRunTestsImported += after.cnt - before.cnt;
       }
     }
 
-    return { workflowRunsImported, testResultsImported, commitChangesImported };
+    return {
+      workflowRunsImported,
+      testResultsImported,
+      commitChangesImported,
+      samplingRunsImported,
+      samplingRunTestsImported,
+    };
   }
 
   // Private helpers

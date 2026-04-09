@@ -13,6 +13,8 @@ export interface GitHubClient {
     total_count: number;
     workflow_runs: Array<{
       id: number;
+      path?: string;
+      status?: string;
       head_branch: string;
       head_sha: string;
       event: string;
@@ -43,6 +45,7 @@ export interface CollectOpts {
   artifactName?: string;
   customCommand?: string;
   storagePath?: string;
+  workflowPaths?: string[];
 }
 
 export interface CollectFailure {
@@ -115,6 +118,12 @@ function getAdapter(adapterType: string, customCommand?: string): TestResultAdap
   return createTestResultAdapter(adapterType, customCommand);
 }
 
+function shouldFailMissingArtifact(run: { status?: string; conclusion?: string }): boolean {
+  return run.status === "completed"
+    && typeof run.conclusion === "string"
+    && run.conclusion !== "success";
+}
+
 export async function collectWorkflowRuns(
   opts: CollectOpts,
 ): Promise<CollectResult> {
@@ -128,6 +137,7 @@ export async function collectWorkflowRuns(
   } = opts;
   const artifactName = opts.artifactName ?? defaultArtifactNameForAdapter(adapterType);
   const adapterConfig = customCommand ?? "";
+  const workflowPaths = new Set((opts.workflowPaths ?? []).filter(Boolean));
 
   const adapter = getAdapter(adapterType, customCommand);
   const { workflow_runs } = await github.listWorkflowRuns();
@@ -141,6 +151,13 @@ export async function collectWorkflowRuns(
   const failures: CollectFailure[] = [];
 
   for (const run of workflow_runs) {
+    if (workflowPaths.size > 0) {
+      const runPath = run.path?.trim();
+      if (!runPath || !workflowPaths.has(runPath)) {
+        continue;
+      }
+    }
+
     const existing = await store.hasCollectedArtifact({
       workflowRunId: run.id,
       adapterType,
@@ -182,6 +199,17 @@ export async function collectWorkflowRuns(
         (a) => a.name === artifactName && !a.expired,
       );
       if (!artifact) {
+        if (shouldFailMissingArtifact(run)) {
+          failedRuns++;
+          failedRunIds.push(run.id);
+          failures.push({
+            runId: run.id,
+            message:
+              `artifact "${artifactName}" was not uploaded for completed workflow run (conclusion=${run.conclusion})`,
+          });
+          await store.recordCollectedArtifact(collectedRecord);
+          continue;
+        }
         pendingArtifactRuns++;
         pendingArtifactRunIds.push(run.id);
         continue;
