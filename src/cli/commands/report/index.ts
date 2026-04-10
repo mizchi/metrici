@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { TestCaseResult } from "../adapters/types.js";
-import { createTestResultAdapter } from "../adapters/index.js";
-import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
-import { normalizeVariant, resolveTestIdentity } from "../identity.js";
+import type { TestCaseResult } from "../../adapters/types.js";
+import { createTestResultAdapter } from "../../adapters/index.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../../core/build-artifact.js";
+import { normalizeVariant, resolveTestIdentity } from "../../identity.js";
 
 export interface ReportTotals {
   total: number;
