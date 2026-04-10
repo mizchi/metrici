@@ -5,5 +5,6 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     exclude: ["node_modules", ".jj"],
     passWithNoTests: true,
+    globalSetup: ["./tests/setup/parquet-fixtures.ts"],
   },
 });
