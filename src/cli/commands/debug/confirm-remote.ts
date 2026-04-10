@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { isGhAvailable } from "../gh.js";
+import { isGhAvailable } from "../../gh.js";
 import { computeVerdict, type ConfirmResult } from "./confirm.js";
 
 export interface ConfirmRemoteOpts {

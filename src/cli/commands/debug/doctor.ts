@@ -1,5 +1,5 @@
-import { formatConfigWarning, loadConfig, loadConfigWithDiagnostics } from "../config.js";
-import { hasMoonBitJsBuild } from "../core/loader.js";
+import { formatConfigWarning, loadConfig, loadConfigWithDiagnostics } from "../../config.js";
+import { hasMoonBitJsBuild } from "../../core/loader.js";
 
 export interface DoctorCheck {
   name: string;

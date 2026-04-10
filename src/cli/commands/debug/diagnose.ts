@@ -1,5 +1,5 @@
-import type { RunnerAdapter, TestId } from "../runners/types.js";
-import type { TestCaseResult } from "../adapters/types.js";
+import type { RunnerAdapter, TestId } from "../../runners/types.js";
+import type { TestCaseResult } from "../../adapters/types.js";
 
 export interface DiagnoseOpts {
   runner: RunnerAdapter;

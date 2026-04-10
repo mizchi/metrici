@@ -2,9 +2,9 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { isGhAvailable } from "../gh.js";
-import type { TestResultAdapter } from "../adapters/types.js";
-import type { RunnerAdapter, TestId } from "../runners/types.js";
+import { isGhAvailable } from "../../gh.js";
+import type { TestResultAdapter } from "../../adapters/types.js";
+import type { RunnerAdapter, TestId } from "../../runners/types.js";
 
 export interface RetryTestResult {
   suite: string;

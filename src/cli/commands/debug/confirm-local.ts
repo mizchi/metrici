@@ -1,4 +1,4 @@
-import type { RunnerAdapter } from "../runners/types.js";
+import type { RunnerAdapter } from "../../runners/types.js";
 import { computeVerdict, type ConfirmResult } from "./confirm.js";
 
 export interface ConfirmLocalOpts {
