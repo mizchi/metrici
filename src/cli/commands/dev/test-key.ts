@@ -1,5 +1,5 @@
-import type { TestId } from "../runners/types.js";
-import { createStableTestId } from "../identity.js";
+import type { TestId } from "../../runners/types.js";
+import { createStableTestId } from "../../identity.js";
 
 /** Key from runner's TestId (camelCase fields) */
 export function createListedTestKey(test: TestId): string {

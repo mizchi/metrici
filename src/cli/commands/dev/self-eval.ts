@@ -1,7 +1,7 @@
-import type { MetricStore } from "../storage/types.js";
-import type { TestMeta } from "../core/loader.js";
-import { SimpleResolver } from "../resolvers/simple.js";
-import { runSample } from "./sample.js";
+import type { MetricStore } from "../../storage/types.js";
+import type { TestMeta } from "../../core/loader.js";
+import { SimpleResolver } from "../../resolvers/simple.js";
+import { runSample } from "../sample.js";
 
 // A scenario defines: project structure, test history, code change, and expected test selection
 export interface Scenario {

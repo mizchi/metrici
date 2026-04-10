@@ -16,7 +16,7 @@ import {
 import {
   createMetaKey,
   buildListedTestIndex,
-} from "../test-key.js";
+} from "../dev/test-key.js";
 
 export interface RunOpts {
   store: MetricStore;

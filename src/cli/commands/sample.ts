@@ -21,7 +21,7 @@ import {
   createListedTestKey,
   createMetaKey,
   buildListedTestIndex,
-} from "./test-key.js";
+} from "./dev/test-key.js";
 
 export interface SampleOpts {
   store: MetricStore;

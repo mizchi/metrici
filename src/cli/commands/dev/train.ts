@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import type { MetricStore } from "../storage/types.js";
-import { loadCore, type MetriciCore } from "../core/loader.js";
-import { extractFeatures, FLAKER_FEATURE_NAMES } from "../eval/gbdt.js";
+import type { MetricStore } from "../../storage/types.js";
+import { loadCore, type MetriciCore } from "../../core/loader.js";
+import { extractFeatures, FLAKER_FEATURE_NAMES } from "../../eval/gbdt.js";
 
 export interface TrainOpts {
   store: MetricStore;

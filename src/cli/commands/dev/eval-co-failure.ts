@@ -1,5 +1,5 @@
-import type { MetricStore } from "../storage/types.js";
-import { CO_FAILURE_QUERY } from "../storage/schema.js";
+import type { MetricStore } from "../../storage/types.js";
+import { CO_FAILURE_QUERY } from "../../storage/schema.js";
 
 export interface CoFailureWindowRow {
   windowDays: number;
