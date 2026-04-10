@@ -12,7 +12,6 @@ import {
   type SamplingConfig,
   type FlakerConfig,
 } from "./config.js";
-import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
   formatCollectSummary,
@@ -356,25 +355,6 @@ appendHelpText(
   "  flaker eval-fixture          Benchmark strategies with synthetic data\n" +
   "  flaker doctor                Check runtime requirements\n",
 );
-
-// --- init ---
-program
-  .command("init")
-  .description("Create flaker.toml (auto-detects owner/name from git remote)")
-  .option("--owner <owner>", "Repository owner (auto-detected from git remote)")
-  .option("--name <name>", "Repository name (auto-detected from git remote)")
-  .action((opts: { owner?: string; name?: string }) => {
-    const cwd = process.cwd();
-    const detected = detectRepoInfo(cwd);
-    const owner = opts.owner ?? detected?.owner ?? "local";
-    const name = opts.name ?? detected?.name ?? basename(cwd);
-    runInit(cwd, { owner, name });
-    if (!detected && !opts.owner) {
-      console.log(`Initialized flaker.toml (${owner}/${name}) — no git remote found, using defaults`);
-    } else {
-      console.log(`Initialized flaker.toml (${owner}/${name})`);
-    }
-  });
 
 // --- collect ---
 program
