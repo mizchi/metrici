@@ -20,6 +20,23 @@ import {
 } from "../commands/analyze/eval.js";
 import { runQuery, formatQueryResult } from "../commands/analyze/query.js";
 
+export async function analyzeKpiAction(opts: { windowDays: string; json?: boolean }): Promise<void> {
+  const config = loadConfig(process.cwd());
+  const store = new DuckDBStore(resolve(config.storage.path));
+  await store.initialize();
+  try {
+    const { computeKpi, formatKpi } = await import("../commands/analyze/kpi.js");
+    const kpi = await computeKpi(store, { windowDays: parseInt(opts.windowDays, 10) });
+    if (opts.json) {
+      console.log(JSON.stringify(kpi, null, 2));
+    } else {
+      console.log(formatKpi(kpi));
+    }
+  } finally {
+    await store.close();
+  }
+}
+
 export function registerAnalyzeCommands(program: Command): void {
   const analyze = program
     .command("analyze")
@@ -30,22 +47,7 @@ export function registerAnalyzeCommands(program: Command): void {
     .description("Show KPI dashboard — sampling effectiveness, flaky tracking, data quality")
     .option("--window-days <days>", "Analysis window in days", "30")
     .option("--json", "Output as JSON")
-    .action(async (opts: { windowDays: string; json?: boolean }) => {
-      const config = loadConfig(process.cwd());
-      const store = new DuckDBStore(resolve(config.storage.path));
-      await store.initialize();
-      try {
-        const { computeKpi, formatKpi } = await import("../commands/analyze/kpi.js");
-        const kpi = await computeKpi(store, { windowDays: parseInt(opts.windowDays, 10) });
-        if (opts.json) {
-          console.log(JSON.stringify(kpi, null, 2));
-        } else {
-          console.log(formatKpi(kpi));
-        }
-      } finally {
-        await store.close();
-      }
-    });
+    .action(analyzeKpiAction);
 
   analyze
     .command("flaky")

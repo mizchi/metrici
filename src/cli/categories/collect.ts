@@ -12,10 +12,111 @@ import {
 import { runCollectLocal } from "../commands/collect/local.js";
 import { DuckDBStore } from "../storage/duckdb.js";
 
+export async function collectCiAction(opts: { days: string; branch?: string; json?: boolean; output?: string; failOnErrors?: boolean }): Promise<void> {
+  const config = loadConfig(process.cwd());
+  const store = new DuckDBStore(resolve(config.storage.path));
+  await store.initialize();
+
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    console.error("Error: GITHUB_TOKEN environment variable is required");
+    process.exit(1);
+  }
+
+  const octokit = new Octokit({ auth: token });
+  const owner = config.repo.owner;
+  const repo = config.repo.name;
+
+  const github: GitHubClient = {
+    async listWorkflowRuns() {
+      const created = new Date();
+      created.setDate(created.getDate() - Number(opts.days));
+      const response = await octokit.actions.listWorkflowRunsForRepo({
+        owner,
+        repo,
+        ...(opts.branch ? { branch: opts.branch } : {}),
+        created: `>=${created.toISOString().split("T")[0]}`,
+        per_page: 100,
+      });
+      return {
+        total_count: response.data.total_count,
+        workflow_runs: response.data.workflow_runs.map((run) => ({
+          id: run.id,
+          path: (run as { path?: string }).path,
+          status: run.status ?? undefined,
+          head_branch: run.head_branch ?? "",
+          head_sha: run.head_sha,
+          event: run.event,
+          conclusion: run.conclusion ?? "unknown",
+          created_at: run.created_at,
+          run_started_at: run.run_started_at ?? run.created_at,
+          updated_at: run.updated_at,
+        })),
+      };
+    },
+    async listArtifacts(runId: number) {
+      const response = await octokit.actions.listWorkflowRunArtifacts({
+        owner,
+        repo,
+        run_id: runId,
+      });
+      return response.data;
+    },
+    async downloadArtifact(artifactId: number) {
+      const response = await octokit.actions.downloadArtifact({
+        owner,
+        repo,
+        artifact_id: artifactId,
+        archive_format: "zip",
+      });
+      return Buffer.from(response.data as ArrayBuffer);
+    },
+    async getCommitFiles(o: string, r: string, sha: string) {
+      const response = await octokit.repos.getCommit({ owner: o, repo: r, ref: sha });
+      return (response.data.files ?? []).map((f) => ({
+        filename: f.filename,
+        status: f.status ?? "modified",
+        additions: f.additions ?? 0,
+        deletions: f.deletions ?? 0,
+      }));
+    },
+  };
+
+  try {
+    const result = await collectWorkflowRuns({
+      store,
+      github,
+      repo: `${owner}/${repo}`,
+      adapterType: config.adapter.type,
+      artifactName: config.adapter.artifact_name,
+      customCommand: config.adapter.command,
+      storagePath: config.storage.path,
+      workflowPaths: config.collect?.workflow_paths,
+    });
+    const formatted = formatCollectSummary(result, opts.json ? "json" : "text");
+    console.log(formatted);
+    if (opts.output) {
+      writeCollectSummary(resolve(process.cwd(), opts.output), formatted);
+    }
+    const exitCode = resolveCollectExitCode(result, { failOnErrors: opts.failOnErrors });
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
+    }
+  } finally {
+    await store.close();
+  }
+}
+
 export function registerCollectCommands(program: Command): void {
   const collectCmd = program
     .command("collect")
-    .description("Import history and calibration");
+    .description("Import history and calibration")
+    .option("--days <n>", "Number of days to look back", "30")
+    .option("--branch <branch>", "Filter by branch")
+    .option("--json", "Output JSON summary")
+    .option("--output <file>", "Write collect summary to a file")
+    .option("--fail-on-errors", "Exit with status 1 when any workflow run fails to collect")
+    .action(collectCiAction);
 
   // --- collect ci ---
   collectCmd
@@ -26,100 +127,7 @@ export function registerCollectCommands(program: Command): void {
     .option("--json", "Output JSON summary")
     .option("--output <file>", "Write collect summary to a file")
     .option("--fail-on-errors", "Exit with status 1 when any workflow run fails to collect")
-    .action(async (opts: { days: string; branch?: string; json?: boolean; output?: string; failOnErrors?: boolean }) => {
-      const config = loadConfig(process.cwd());
-      const store = new DuckDBStore(resolve(config.storage.path));
-      await store.initialize();
-
-      const token = process.env.GITHUB_TOKEN;
-      if (!token) {
-        console.error("Error: GITHUB_TOKEN environment variable is required");
-        process.exit(1);
-      }
-
-      const octokit = new Octokit({ auth: token });
-      const owner = config.repo.owner;
-      const repo = config.repo.name;
-
-      const github: GitHubClient = {
-        async listWorkflowRuns() {
-          const created = new Date();
-          created.setDate(created.getDate() - Number(opts.days));
-          const response = await octokit.actions.listWorkflowRunsForRepo({
-            owner,
-            repo,
-            ...(opts.branch ? { branch: opts.branch } : {}),
-            created: `>=${created.toISOString().split("T")[0]}`,
-            per_page: 100,
-          });
-          return {
-            total_count: response.data.total_count,
-            workflow_runs: response.data.workflow_runs.map((run) => ({
-              id: run.id,
-              path: (run as { path?: string }).path,
-              status: run.status ?? undefined,
-              head_branch: run.head_branch ?? "",
-              head_sha: run.head_sha,
-              event: run.event,
-              conclusion: run.conclusion ?? "unknown",
-              created_at: run.created_at,
-              run_started_at: run.run_started_at ?? run.created_at,
-              updated_at: run.updated_at,
-            })),
-          };
-        },
-        async listArtifacts(runId: number) {
-          const response = await octokit.actions.listWorkflowRunArtifacts({
-            owner,
-            repo,
-            run_id: runId,
-          });
-          return response.data;
-        },
-        async downloadArtifact(artifactId: number) {
-          const response = await octokit.actions.downloadArtifact({
-            owner,
-            repo,
-            artifact_id: artifactId,
-            archive_format: "zip",
-          });
-          return Buffer.from(response.data as ArrayBuffer);
-        },
-        async getCommitFiles(o: string, r: string, sha: string) {
-          const response = await octokit.repos.getCommit({ owner: o, repo: r, ref: sha });
-          return (response.data.files ?? []).map((f) => ({
-            filename: f.filename,
-            status: f.status ?? "modified",
-            additions: f.additions ?? 0,
-            deletions: f.deletions ?? 0,
-          }));
-        },
-      };
-
-      try {
-        const result = await collectWorkflowRuns({
-          store,
-          github,
-          repo: `${owner}/${repo}`,
-          adapterType: config.adapter.type,
-          artifactName: config.adapter.artifact_name,
-          customCommand: config.adapter.command,
-          storagePath: config.storage.path,
-          workflowPaths: config.collect?.workflow_paths,
-        });
-        const formatted = formatCollectSummary(result, opts.json ? "json" : "text");
-        console.log(formatted);
-        if (opts.output) {
-          writeCollectSummary(resolve(process.cwd(), opts.output), formatted);
-        }
-        const exitCode = resolveCollectExitCode(result, { failOnErrors: opts.failOnErrors });
-        if (exitCode !== 0) {
-          process.exitCode = exitCode;
-        }
-      } finally {
-        await store.close();
-      }
-    });
+    .action(collectCiAction);
 
   // --- collect local ---
   collectCmd
