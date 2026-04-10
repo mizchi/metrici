@@ -5,11 +5,11 @@ import {
   statSync,
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
-import type { ConfigWarning } from "../config.js";
-import { formatConfigWarning } from "../config.js";
-import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
-import type { TestId } from "../runners/types.js";
-import { parseBitflowWorkflowTasks } from "../resolvers/bitflow-workflow.js";
+import type { ConfigWarning } from "../../config.js";
+import { formatConfigWarning } from "../../config.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../../core/build-artifact.js";
+import type { TestId } from "../../runners/types.js";
+import { parseBitflowWorkflowTasks } from "../../resolvers/bitflow-workflow.js";
 
 export interface TaskDefinition {
   taskId: string;

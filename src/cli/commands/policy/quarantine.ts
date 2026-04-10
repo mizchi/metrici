@@ -1,5 +1,5 @@
-import type { MetricStore, QuarantinedTest } from "../storage/types.js";
-import { formatIssueBody } from "../gh.js";
+import type { MetricStore, QuarantinedTest } from "../../storage/types.js";
+import { formatIssueBody } from "../../gh.js";
 
 export interface QuarantineIssueInput {
   suite: string;
