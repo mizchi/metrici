@@ -115,6 +115,15 @@ import { runConfirmLocal } from "./commands/confirm-local.js";
 import { runConfirmRemote } from "./commands/confirm-remote.js";
 import { runRetry, formatRetryReport } from "./commands/retry.js";
 import { createTestResultAdapter } from "./adapters/index.js";
+import { registerSetupCommands } from "./categories/setup.js";
+import { registerExecCommands } from "./categories/exec.js";
+import { registerCollectCommands } from "./categories/collect.js";
+import { registerImportCommands } from "./categories/import.js";
+import { registerReportCommands } from "./categories/report.js";
+import { registerAnalyzeCommands } from "./categories/analyze.js";
+import { registerDebugCommands } from "./categories/debug.js";
+import { registerPolicyCommands } from "./categories/policy.js";
+import { registerDevCommands } from "./categories/dev.js";
 
 function formatHelpExamples(
   title: string,
@@ -147,6 +156,14 @@ function isDirectCliExecution(): boolean {
 
 export function createProgram(): Command {
   const program = new Command();
+  registerSetupCommands(program);
+  registerExecCommands(program);
+  registerAnalyzeCommands(program);
+  registerDebugCommands(program);
+  registerPolicyCommands(program);
+  registerDevCommands(program);
+  // registerCollectCommands, registerImportCommands, registerReportCommands deferred:
+  // existing flat commands with those names must be removed first (Tasks 2-10)
 
 async function collectKnownQuarantineTaskIds(
   cwd: string,
