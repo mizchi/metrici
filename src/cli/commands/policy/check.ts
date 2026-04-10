@@ -5,7 +5,7 @@ import {
   statSync,
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
-import type { ConfigWarning } from "../../config.js";
+import type { ConfigRangeError, ConfigWarning } from "../../config.js";
 import { formatConfigWarning } from "../../config.js";
 import { MOONBIT_JS_BRIDGE_URL } from "../../core/build-artifact.js";
 import type { TestId } from "../../runners/types.js";
@@ -35,7 +35,8 @@ export interface ConfigCheckIssue {
     | "duplicate-ownership"
     | "unmanaged-spec"
     | "legacy-threshold-unit"
-    | "out-of-range-threshold";
+    | "out-of-range-threshold"
+    | "config-range";
   spec: string;
   detail: string;
 }
@@ -349,6 +350,30 @@ export function appendConfigWarnings(
     code: warning.code,
     spec: "flaker.toml",
     detail: formatConfigWarning(warning),
+  }));
+
+  return {
+    ...report,
+    summary: {
+      ...report.summary,
+      warningCount: report.summary.warningCount + issues.length,
+    },
+    warnings: [...report.warnings, ...issues],
+  };
+}
+
+export function appendConfigRangeErrors(
+  report: ConfigCheckReport,
+  rangeErrors: ConfigRangeError[],
+): ConfigCheckReport {
+  if (rangeErrors.length === 0) {
+    return report;
+  }
+
+  const issues: ConfigCheckIssue[] = rangeErrors.map((err) => ({
+    code: "config-range" as const,
+    spec: "flaker.toml",
+    detail: `${err.path}=${err.value} out of range (${err.expected})`,
   }));
 
   return {

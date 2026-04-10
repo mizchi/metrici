@@ -1,4 +1,4 @@
-import { formatConfigWarning, loadConfig, loadConfigWithDiagnostics } from "../../config.js";
+import { formatConfigWarning, loadConfig, loadConfigWithDiagnostics, validateConfigRanges } from "../../config.js";
 import { hasMoonBitJsBuild } from "../../core/loader.js";
 
 export interface DoctorCheck {
@@ -50,6 +50,25 @@ export async function runDoctor(cwd: string, deps?: Partial<DoctorDeps>): Promis
       ok: false,
       detail: error instanceof Error ? error.message : String(error),
     });
+  }
+
+  // Config range check
+  try {
+    const config = loadConfig(cwd);
+    const rangeErrors = validateConfigRanges(config);
+    if (rangeErrors.length === 0) {
+      checks.push({ name: "config ranges", ok: true, detail: "all values within expected ranges" });
+    } else {
+      for (const err of rangeErrors) {
+        checks.push({
+          name: "config ranges",
+          ok: false,
+          detail: `${err.path}=${err.value} out of range (${err.expected})`,
+        });
+      }
+    }
+  } catch {
+    // config may be missing or invalid — other checks already cover this
   }
 
   // DuckDB check

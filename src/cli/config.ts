@@ -215,6 +215,45 @@ export function resolveActrunWorkflowPath(config: FlakerConfig): string {
   );
 }
 
+export interface ConfigRangeError {
+  path: string;
+  value: number;
+  expected: string;
+}
+
+export function validateConfigRanges(config: FlakerConfig): ConfigRangeError[] {
+  const errors: ConfigRangeError[] = [];
+  const check = (path: string, value: number | undefined, min: number, max: number, label: string) => {
+    if (value == null) return;
+    if (typeof value !== "number" || Number.isNaN(value)) return;
+    if (value < min || value > max) {
+      errors.push({ path, value, expected: label });
+    }
+  };
+
+  check("flaky.detection_threshold_ratio", config.flaky.detection_threshold_ratio, 0, 1, "0.0-1.0");
+  check("quarantine.flaky_rate_threshold_percentage", config.quarantine.flaky_rate_threshold_percentage, 0, 100, "0-100");
+
+  if (config.sampling) {
+    check("sampling.sample_percentage", config.sampling.sample_percentage, 0, 100, "0-100");
+    check("sampling.holdout_ratio", config.sampling.holdout_ratio, 0, 1, "0.0-1.0");
+    check("sampling.detected_flaky_rate_ratio", config.sampling.detected_flaky_rate_ratio, 0, 1, "0.0-1.0");
+    check("sampling.detected_co_failure_strength_ratio", config.sampling.detected_co_failure_strength_ratio, 0, 1, "0.0-1.0");
+  }
+
+  if (config.profile) {
+    for (const [name, p] of Object.entries(config.profile)) {
+      check(`profile.${name}.sample_percentage`, p.sample_percentage, 0, 100, "0-100");
+      check(`profile.${name}.holdout_ratio`, p.holdout_ratio, 0, 1, "0.0-1.0");
+      check(`profile.${name}.adaptive_fnr_low_ratio`, p.adaptive_fnr_low_ratio, 0, 1, "0.0-1.0");
+      check(`profile.${name}.adaptive_fnr_high_ratio`, p.adaptive_fnr_high_ratio, 0, 1, "0.0-1.0");
+      check(`profile.${name}.adaptive_min_percentage`, p.adaptive_min_percentage, 0, 100, "0-100");
+    }
+  }
+
+  return errors;
+}
+
 /**
  * Write or update the [sampling] section in flaker.toml.
  * Preserves existing content by replacing the section if it exists,

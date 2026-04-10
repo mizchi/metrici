@@ -7,12 +7,13 @@ import {
 } from "../commands/policy/quarantine.js";
 import {
   appendConfigWarnings,
+  appendConfigRangeErrors,
   discoverTestSpecsForCheck,
   formatConfigCheckReport,
   loadTaskDefinitionsForCheck,
   runConfigCheck,
 } from "../commands/policy/check.js";
-import { loadConfig, loadConfigWithDiagnostics } from "../config.js";
+import { loadConfig, loadConfigWithDiagnostics, validateConfigRanges } from "../config.js";
 import { isGhAvailable, createGhIssue } from "../gh.js";
 import { DuckDBStore } from "../storage/duckdb.js";
 import { createRunner } from "../runners/index.js";
@@ -310,11 +311,15 @@ export function registerPolicyCommands(program: Command): void {
         resolverConfig: config.affected.config,
       });
 
-      const report = appendConfigWarnings(runConfigCheck({
-        listedTests,
-        discoveredSpecs,
-        taskDefinitions,
-      }), configWarnings);
+      const rangeErrors = validateConfigRanges(config);
+      const report = appendConfigRangeErrors(
+        appendConfigWarnings(runConfigCheck({
+          listedTests,
+          discoveredSpecs,
+          taskDefinitions,
+        }), configWarnings),
+        rangeErrors,
+      );
       console.log(
         formatConfigCheckReport(report, opts.json ? "json" : "markdown"),
       );
