@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import { loadCore } from "../../src/cli/core/loader.js";
 import { loadFixtureIntoStore } from "../../src/cli/eval/fixture-loader.js";
-import { analyzeProject, recommendSampling } from "../../src/cli/commands/calibrate.js";
+import { analyzeProject, recommendSampling } from "../../src/cli/commands/collect/calibrate.js";
 import { trainModel } from "../../src/cli/commands/train.js";
 import { planSample } from "../../src/cli/commands/sample.js";
 import { runInsights } from "../../src/cli/commands/insights.js";

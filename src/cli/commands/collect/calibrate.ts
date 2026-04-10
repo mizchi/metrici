@@ -1,5 +1,5 @@
-import type { MetricStore } from "../storage/types.js";
-import type { SamplingConfig } from "../config.js";
+import type { MetricStore } from "../../storage/types.js";
+import type { SamplingConfig } from "../../config.js";
 
 export interface ProjectProfile {
   testCount: number;

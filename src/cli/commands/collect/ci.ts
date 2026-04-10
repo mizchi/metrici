@@ -1,12 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import AdmZip from "adm-zip";
-import { createTestResultAdapter } from "../adapters/index.js";
-import type { TestResultAdapter } from "../adapters/types.js";
-import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
-import { toStoredTestResult } from "../storage/test-result-mapper.js";
-import { collectCommitChanges } from "./collect-commit-changes.js";
-import { exportRunParquet } from "./export-parquet.js";
+import { createTestResultAdapter } from "../../adapters/index.js";
+import type { TestResultAdapter } from "../../adapters/types.js";
+import type { MetricStore, WorkflowRun, TestResult } from "../../storage/types.js";
+import { toStoredTestResult } from "../../storage/test-result-mapper.js";
+import { collectCommitChanges } from "./commit-changes.js";
+import { exportRunParquet } from "../export-parquet.js";
 
 export interface GitHubClient {
   listWorkflowRuns(): Promise<{

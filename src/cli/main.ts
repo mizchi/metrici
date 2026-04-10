@@ -3,22 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { Octokit } from "@octokit/rest";
 import {
   loadConfig,
   loadConfigWithDiagnostics,
-  resolveActrunWorkflowPath,
-  writeSamplingConfig,
-  type SamplingConfig,
   type FlakerConfig,
 } from "./config.js";
-import {
-  collectWorkflowRuns,
-  formatCollectSummary,
-  resolveCollectExitCode,
-  writeCollectSummary,
-  type GitHubClient,
-} from "./commands/collect.js";
 import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
 import {
   formatSamplingSummary,
@@ -41,7 +30,6 @@ function loadTuningConfigSafe(storagePath: string): TuningConfig {
     return { alpha: 1.0 };
   }
 }
-import { runCollectLocal } from "./commands/collect-local.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
@@ -151,12 +139,13 @@ export function createProgram(): Command {
   const program = new Command();
   registerSetupCommands(program);
   registerExecCommands(program);
+  registerCollectCommands(program);
   registerAnalyzeCommands(program);
   registerDebugCommands(program);
   registerPolicyCommands(program);
   registerDevCommands(program);
-  // registerCollectCommands, registerImportCommands, registerReportCommands deferred:
-  // existing flat commands with those names must be removed first (Tasks 2-10)
+  // registerImportCommands, registerReportCommands deferred:
+  // existing flat commands with those names must be removed first (Tasks 5, 6)
 
 async function collectKnownQuarantineTaskIds(
   cwd: string,
@@ -349,110 +338,6 @@ appendHelpText(
   "  flaker eval-fixture          Benchmark strategies with synthetic data\n" +
   "  flaker doctor                Check runtime requirements\n",
 );
-
-// --- collect ---
-program
-  .command("collect")
-  .description("Collect workflow runs from GitHub")
-  .option("--last <days>", "Number of days to look back", "30")
-  .option("--branch <branch>", "Filter by branch")
-  .option("--json", "Output JSON summary")
-  .option("--output <file>", "Write collect summary to a file")
-  .option("--fail-on-errors", "Exit with status 1 when any workflow run fails to collect")
-  .action(async (opts: { last: string; branch?: string; json?: boolean; output?: string; failOnErrors?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      console.error("Error: GITHUB_TOKEN environment variable is required");
-      process.exit(1);
-    }
-
-    const octokit = new Octokit({ auth: token });
-    const owner = config.repo.owner;
-    const repo = config.repo.name;
-
-    const github: GitHubClient = {
-      async listWorkflowRuns() {
-        const created = new Date();
-        created.setDate(created.getDate() - Number(opts.last));
-        const response = await octokit.actions.listWorkflowRunsForRepo({
-          owner,
-          repo,
-          ...(opts.branch ? { branch: opts.branch } : {}),
-          created: `>=${created.toISOString().split("T")[0]}`,
-          per_page: 100,
-        });
-        return {
-          total_count: response.data.total_count,
-          workflow_runs: response.data.workflow_runs.map((run) => ({
-            id: run.id,
-            path: (run as { path?: string }).path,
-            status: run.status ?? undefined,
-            head_branch: run.head_branch ?? "",
-            head_sha: run.head_sha,
-            event: run.event,
-            conclusion: run.conclusion ?? "unknown",
-            created_at: run.created_at,
-            run_started_at: run.run_started_at ?? run.created_at,
-            updated_at: run.updated_at,
-          })),
-        };
-      },
-      async listArtifacts(runId: number) {
-        const response = await octokit.actions.listWorkflowRunArtifacts({
-          owner,
-          repo,
-          run_id: runId,
-        });
-        return response.data;
-      },
-      async downloadArtifact(artifactId: number) {
-        const response = await octokit.actions.downloadArtifact({
-          owner,
-          repo,
-          artifact_id: artifactId,
-          archive_format: "zip",
-        });
-        return Buffer.from(response.data as ArrayBuffer);
-      },
-      async getCommitFiles(o: string, r: string, sha: string) {
-        const response = await octokit.repos.getCommit({ owner: o, repo: r, ref: sha });
-        return (response.data.files ?? []).map((f) => ({
-          filename: f.filename,
-          status: f.status ?? "modified",
-          additions: f.additions ?? 0,
-          deletions: f.deletions ?? 0,
-        }));
-      },
-    };
-
-    try {
-      const result = await collectWorkflowRuns({
-        store,
-        github,
-        repo: `${owner}/${repo}`,
-        adapterType: config.adapter.type,
-        artifactName: config.adapter.artifact_name,
-        customCommand: config.adapter.command,
-        storagePath: config.storage.path,
-        workflowPaths: config.collect?.workflow_paths,
-      });
-      const formatted = formatCollectSummary(result, opts.json ? "json" : "text");
-      console.log(formatted);
-      if (opts.output) {
-        writeCollectSummary(resolve(process.cwd(), opts.output), formatted);
-      }
-      const exitCode = resolveCollectExitCode(result, { failOnErrors: opts.failOnErrors });
-      if (exitCode !== 0) {
-        process.exitCode = exitCode;
-      }
-    } finally {
-      await store.close();
-    }
-  });
 
 // --- flaky ---
 program
@@ -1097,60 +982,6 @@ program
     }
   });
 
-// --- collect-local ---
-program
-  .command("collect-local")
-  .description("Import actrun local run history into flaker")
-  .option("--last <n>", "Import only last N runs")
-  .action(async (opts: { last?: string }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const result = await runCollectLocal({
-        store,
-        last: opts.last ? Number(opts.last) : undefined,
-        storagePath: config.storage.path,
-      });
-      console.log(`Imported ${result.runsImported} runs, ${result.testsImported} test results`);
-      if (result.runsImported > 0) {
-        const { runEval, formatEvalReport } = await import("./commands/eval.js");
-        const evalReport = await runEval({ store });
-        console.log(formatEvalReport(evalReport));
-      }
-    } finally {
-      await store.close();
-    }
-  });
-
-// --- collect-coverage ---
-program
-  .command("collect-coverage")
-  .description("Collect test coverage data and store edges in DuckDB")
-  .requiredOption("--format <type>", "Coverage format: istanbul, v8, playwright")
-  .requiredOption("--input <path>", "Path to coverage JSON file or directory")
-  .option("--test-id-prefix <prefix>", "Prefix for test IDs (e.g. commit SHA)")
-  .action(async (opts: { format: string; input: string; testIdPrefix?: string }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const { collectCoverage, formatCollectCoverageSummary } = await import("./commands/collect-coverage.js");
-      const result = await collectCoverage({
-        store,
-        format: opts.format,
-        input: opts.input,
-        testIdPrefix: opts.testIdPrefix,
-      });
-      console.log(formatCollectCoverageSummary(result));
-    } catch (e: unknown) {
-      console.error(`Error: ${e instanceof Error ? e.message : e}`);
-      process.exit(1);
-    } finally {
-      await store.close();
-    }
-  });
-
 // --- diagnose ---
 program
   .command("diagnose")
@@ -1491,53 +1322,6 @@ program
     }
   });
 
-// --- calibrate ---
-program
-  .command("calibrate")
-  .description("Analyze project history and write optimal [sampling] config to flaker.toml")
-  .option("--window-days <days>", "Analysis window in days", "90")
-  .option("--dry-run", "Show recommendation without writing to flaker.toml")
-  .option("--explain", "Output JSON context for LLM-assisted calibration")
-  .action(async (opts: { windowDays: string; dryRun?: boolean; explain?: boolean }) => {
-    const { existsSync } = await import("node:fs");
-    const cwd = process.cwd();
-    const config = loadConfig(cwd);
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const { analyzeProject, recommendSampling, formatCalibrationReport, buildExplainContext, queryTopTests } = await import("./commands/calibrate.js");
-
-      const hasResolver = config.affected.resolver !== "" && config.affected.resolver !== "none";
-      const modelPath = resolve(".flaker", "models", "gbdt.json");
-      const hasGBDTModel = existsSync(modelPath);
-
-      const profile = await analyzeProject(store, {
-        hasResolver,
-        hasGBDTModel,
-        windowDays: parseInt(opts.windowDays, 10),
-      });
-      const sampling = recommendSampling(profile);
-      const result = { profile, sampling };
-
-      if (opts.explain) {
-        const topTests = await queryTopTests(store, parseInt(opts.windowDays, 10));
-        console.log(JSON.stringify(buildExplainContext(result, topTests), null, 2));
-        return;
-      }
-
-      console.log(formatCalibrationReport(result));
-
-      if (!opts.dryRun) {
-        writeSamplingConfig(cwd, sampling);
-        console.log(`\nWritten to flaker.toml [sampling] section.`);
-      } else {
-        console.log(`\n(dry run — flaker.toml not modified)`);
-      }
-    } finally {
-      await store.close();
-    }
-  });
-
 // --- context ---
 program
   .command("context")
@@ -1678,11 +1462,6 @@ program
     process.exit(report.ok ? 0 : 1);
   });
 
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "collect"), [
-    "flaker collect --last 30",
-    "flaker collect --branch main --last 14",
-    "flaker collect --json --output .artifacts/collect.json --fail-on-errors",
-  ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "flaky"), [
     "flaker flaky --top 20",
     "flaker flaky --true-flaky",
@@ -1731,10 +1510,6 @@ program
   appendExamplesToCommand(program.commands.find((command) => command.name() === "bisect"), [
     "flaker bisect --test \"should redirect\"",
     "flaker bisect --test \"should redirect\" --suite tests/login.spec.ts",
-  ]);
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "collect-local"), [
-    "flaker collect-local",
-    "flaker collect-local --last 10",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "self-eval"), [
     "flaker self-eval",

@@ -306,7 +306,7 @@ export function registerExecCommands(program: Command): void {
         );
         // Collect commit_changes for co-failure learning
         if (commitSha && !commitSha.startsWith("local-")) {
-          const { collectCommitChanges } = await import("../commands/collect-commit-changes.js");
+          const { collectCommitChanges } = await import("../commands/collect/commit-changes.js");
           await collectCommitChanges(store, cwd, commitSha);
         }
         // Store holdout test results with is_holdout marker

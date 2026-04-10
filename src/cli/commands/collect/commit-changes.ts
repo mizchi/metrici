@@ -1,5 +1,5 @@
-import type { MetricStore } from "../storage/types.js";
-import { resolveCommitChanges } from "../core/git.js";
+import type { MetricStore } from "../../storage/types.js";
+import { resolveCommitChanges } from "../../core/git.js";
 
 interface CollectCommitChangesResult {
   commitSha: string;

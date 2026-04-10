@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recommendSampling, type ProjectProfile } from "../../src/cli/commands/calibrate.js";
+import { recommendSampling, type ProjectProfile } from "../../src/cli/commands/collect/calibrate.js";
 import { writeSamplingConfig, loadConfig, type SamplingConfig } from "../../src/cli/config.js";
 import { writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";

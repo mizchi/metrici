@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
-import { createCoverageAdapter } from "../adapters/coverage-index.js";
-import type { CoverageEdge } from "../adapters/coverage-types.js";
-import type { MetricStore } from "../storage/types.js";
+import { createCoverageAdapter } from "../../adapters/coverage-index.js";
+import type { CoverageEdge } from "../../adapters/coverage-types.js";
+import type { MetricStore } from "../../storage/types.js";
 
 export interface CollectCoverageOpts {
   store: MetricStore;
