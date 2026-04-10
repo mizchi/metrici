@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restructure the flaker CLI into a two-level category hierarchy, merge `sample` into `run --dry-run`, unify `flaker.toml` unit conventions, and refresh all documentation. Ship as `0.1.0` (breaking).
+**Goal:** Restructure the flaker CLI into a two-level category hierarchy, merge `sample` into `run --dry-run`, unify `flaker.toml` unit conventions, and refresh all documentation. Ship as `0.2.0` (breaking).
 
 **Architecture:** Split `src/cli/main.ts` (2076 lines) into nine category modules under `src/cli/categories/`, each exporting `registerXCommands(program)`. Move each command handler into `src/cli/commands/<category>/<name>.ts`. Keep top-level aliases (`init`, `run`, `kpi`, `collect`) as thin wrappers that delegate to category handlers. Config layer is rewritten with suffix-per-unit naming and a hard-fail migration error for legacy keys.
 
@@ -2319,7 +2319,7 @@ In the section that covers `run`, paste the block from spec §3.2 verbatim.
 ```markdown
 ## Config migration
 
-`flaker 0.1.0` renames config keys to follow a suffix-per-unit convention: `*_ratio` (0.0-1.0), `*_percentage` (0-100), `*_days`, `*_seconds`, `*_count`. Values without a unit suffix are gone.
+`flaker 0.2.0` renames config keys to follow a suffix-per-unit convention: `*_ratio` (0.0-1.0), `*_percentage` (0-100), `*_days`, `*_seconds`, `*_count`. Values without a unit suffix are gone.
 
 Upgrade by running the rename table below against your `flaker.toml`. The CLI refuses to start on a legacy config and points here.
 
@@ -2513,7 +2513,7 @@ git commit -m "Update workflows and scripts for new CLI hierarchy"
 Items in `## sample-webapp-2026 で見えた UX 改善` that the spec implements (the flag precedence block, `flaker eval --output`, cold-start explanation) are already marked. Do not touch them. But add a new section at the top:
 
 ```markdown
-## 0.1.0 CLI redesign (2026-04-10)
+## 0.2.0 CLI redesign (2026-04-10)
 
 - [x] See docs/superpowers/specs/2026-04-10-flaker-cli-redesign-design.md and docs/superpowers/plans/2026-04-10-flaker-cli-redesign.md
 ```
@@ -2522,7 +2522,7 @@ Items in `## sample-webapp-2026 で見えた UX 改善` that the spec implements
 
 ```bash
 git add TODO.md
-git commit -m "Note 0.1.0 CLI redesign in TODO"
+git commit -m "Note 0.2.0 CLI redesign in TODO"
 ```
 
 ---
@@ -2538,7 +2538,7 @@ git commit -m "Note 0.1.0 CLI redesign in TODO"
 ```markdown
 # Changelog
 
-## 0.1.0 — 2026-04-10
+## 0.2.0 — 2026-04-10
 
 ### Breaking changes
 
@@ -2617,12 +2617,12 @@ See [docs/how-to-use.md#config-migration](docs/how-to-use.md#config-migration) f
 
 In `package.json`:
 ```json
-"version": "0.1.0"
+"version": "0.2.0"
 ```
 
 In `moon.mod.json`:
 ```json
-"version": "0.1.0"
+"version": "0.2.0"
 ```
 
 - [ ] **Step 3: Verify smoke tests**
@@ -2640,7 +2640,7 @@ Expected: all succeed.
 
 ```bash
 git add CHANGELOG.md package.json moon.mod.json
-git commit -m "Bump version to 0.1.0 and add CHANGELOG"
+git commit -m "Bump version to 0.2.0 and add CHANGELOG"
 ```
 
 ---

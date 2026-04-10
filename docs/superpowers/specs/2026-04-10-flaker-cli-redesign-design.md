@@ -1,7 +1,7 @@
 # flaker CLI Redesign — Design Spec
 
 **Date:** 2026-04-10
-**Version bump target:** `0.1.0` (breaking)
+**Version bump target:** `0.2.0` (breaking)
 **Scope:** CLI command hierarchy, flag conventions, config unit naming, help layout, documentation refresh. No changes to MoonBit core logic, DuckDB schema, sampling algorithms, or profile auto-detection.
 
 ---
@@ -10,7 +10,7 @@
 
 - Reshape the flat 33-command surface into a **two-level category hierarchy** plus four top-level aliases.
 - Unify command naming, flag precedence, and config unit conventions so that `flaker.toml` and CLI flags stop mixing `percentage`, `ratio`, and dimensionless numbers.
-- Ship as `0.1.0` with no backward-compatibility shims. Old command names, old flag names, and old config keys are removed outright. Old configs fail fast with a migration hint.
+- Ship as `0.2.0` with no backward-compatibility shims. Old command names, old flag names, and old config keys are removed outright. Old configs fail fast with a migration hint.
 - Rewrite `README.md` and both language variants of `docs/how-to-use.md` so they match the new surface.
 
 ### Non-goals
@@ -96,7 +96,7 @@ Implementation: both the category subcommand and the top-level alias are registe
 
 ### 2.3 Removed and renamed top-level commands
 
-Nothing is deprecated-with-alias. Old names are gone outright in `0.1.0`.
+Nothing is deprecated-with-alias. Old names are gone outright in `0.2.0`.
 
 - `flaker sample` — **deleted**, folded into `flaker run --dry-run`.
 - All other commands keep their handlers and move under a category (see §2.1).
@@ -445,7 +445,7 @@ Each category file exports `registerXCommands(program: Command): void` and is ca
 | `docs/why-flaker.md`, `docs/why-flaker.ja.md`, `docs/introduce.ja.md`, other `docs/*.md` | Sweep for stale command names; wording-only edits. |
 | `TODO.md` | Check off items this spec consumes; add any newly discovered follow-ups. |
 | `flaker.toml` (repo dogfood config) | Migrate to new keys. |
-| `CHANGELOG.md` | **New.** `0.1.0` entry listing every breaking change. |
+| `CHANGELOG.md` | **New.** `0.2.0` entry listing every breaking change. |
 | `.github/workflows/ci.yml`, `.github/workflows/nightly-self-host.yml` | String-replace old command names to new ones. Behavior unchanged. |
 | `scripts/self-host-review.mjs`, `scripts/dev-cli.mjs`, `scripts/run-flaker.mjs`-equivalents | Sweep for stale command names. |
 
@@ -469,8 +469,8 @@ After the rewrite, `pnpm build` plus `node dist/cli/main.js <category> --help` f
 
 ## 10. Release
 
-- `package.json` version → `0.1.0`.
-- `moon.mod.json` version → `0.1.0`.
+- `package.json` version → `0.2.0`.
+- `moon.mod.json` version → `0.2.0`.
 - `CHANGELOG.md` entry covers: removed commands, renamed commands, renamed flags, renamed config keys, exit code contract for `debug confirm`.
 - npm publish is manual and out of scope for this spec.
 
@@ -485,4 +485,4 @@ None at spec-write time. Decisions made:
 - Config units: option A (suffix-per-unit).
 - Top-level aliases: keep `init`, `run`, `kpi`, `collect`.
 - Exit codes: `0=TRANSIENT, 1=FLAKY, 2=BROKEN, 3=ERROR`.
-- Backward compatibility: none. `0.1.0` is a hard break.
+- Backward compatibility: none. `0.2.0` is a hard break.
