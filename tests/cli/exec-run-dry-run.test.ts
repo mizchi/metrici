@@ -28,7 +28,7 @@ resolver = "workspace"
 
 [sampling]
 strategy = "random"
-percentage = 30
+sample_percentage = 30
 `);
       const cliPath = join(process.cwd(), "dist/cli/main.js");
       // Should succeed and not attempt to run any tests
