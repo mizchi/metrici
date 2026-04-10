@@ -33,9 +33,9 @@ import {
   resolveFallbackSamplingMode,
   type ResolvedProfile,
 } from "../profile.js";
-import { computeKpi } from "../commands/kpi.js";
-import { runInsights } from "../commands/insights.js";
-import { runSamplingKpi } from "../commands/eval.js";
+import { computeKpi } from "../commands/analyze/kpi.js";
+import { runInsights } from "../commands/analyze/insights.js";
+import { runSamplingKpi } from "../commands/analyze/eval.js";
 
 interface SamplingCliOpts {
   profile?: string;
@@ -225,7 +225,7 @@ export function registerExecCommands(program: Command): void {
               console.log(`Imported ${testCases.length} test results from actrun run ${result.runId}`);
             }
             // Run eval mini-report
-            const { runEval, formatEvalReport } = await import("../commands/eval.js");
+            const { runEval, formatEvalReport } = await import("../commands/analyze/eval.js");
             const evalReport = await runEval({ store });
             console.log(formatEvalReport(evalReport));
           }

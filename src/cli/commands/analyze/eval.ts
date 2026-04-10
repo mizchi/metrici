@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { MetricStore } from "../storage/types.js";
-import { MOONBIT_JS_BRIDGE_URL } from "../core/build-artifact.js";
+import type { MetricStore } from "../../storage/types.js";
+import { MOONBIT_JS_BRIDGE_URL } from "../../core/build-artifact.js";
 
 export interface EvalReport {
   dataSufficiency: {

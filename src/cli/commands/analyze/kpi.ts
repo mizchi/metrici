@@ -1,4 +1,4 @@
-import type { MetricStore } from "../storage/types.js";
+import type { MetricStore } from "../../storage/types.js";
 
 export interface FlakerKpi {
   timestamp: string;

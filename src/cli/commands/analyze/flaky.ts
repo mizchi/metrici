@@ -1,4 +1,4 @@
-import type { MetricStore, FlakyScore, FlakyQueryOpts, TrendEntry, TrueFlakyScore, VariantFlakyScore } from "../storage/types.js";
+import type { MetricStore, FlakyScore, FlakyQueryOpts, TrendEntry, TrueFlakyScore, VariantFlakyScore } from "../../storage/types.js";
 
 export interface FlakyOpts {
   store: MetricStore;

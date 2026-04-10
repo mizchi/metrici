@@ -1,4 +1,4 @@
-import type { MetricStore } from "../storage/types.js";
+import type { MetricStore } from "../../storage/types.js";
 
 export async function runQuery(store: MetricStore, sql: string): Promise<unknown[]> {
   return store.raw(sql);

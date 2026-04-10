@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import type { MetricStore } from "../storage/types.js";
+import type { MetricStore } from "../../storage/types.js";
 
 export interface FlakerContext {
   environment: {

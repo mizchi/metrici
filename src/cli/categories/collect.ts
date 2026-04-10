@@ -138,7 +138,7 @@ export function registerCollectCommands(program: Command): void {
         });
         console.log(`Imported ${result.runsImported} runs, ${result.testsImported} test results`);
         if (result.runsImported > 0) {
-          const { runEval, formatEvalReport } = await import("../commands/eval.js");
+          const { runEval, formatEvalReport } = await import("../commands/analyze/eval.js");
           const evalReport = await runEval({ store });
           console.log(formatEvalReport(evalReport));
         }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
-import { computeKpi } from "../../src/cli/commands/kpi.js";
+import { computeKpi } from "../../src/cli/commands/analyze/kpi.js";
 import { analyzeProject } from "../../src/cli/commands/collect/calibrate.js";
 
 describe("KPI scenarios", () => {

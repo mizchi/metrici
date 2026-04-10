@@ -1,4 +1,4 @@
-import type { MetricStore, FlakyScore, TrueFlakyScore, TestResult } from "../storage/types.js";
+import type { MetricStore, FlakyScore, TrueFlakyScore, TestResult } from "../../storage/types.js";
 
 export interface TestClassification {
   suite: string;

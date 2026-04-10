@@ -8,7 +8,6 @@ import {
   loadConfigWithDiagnostics,
   type FlakerConfig,
 } from "./config.js";
-import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
 import {
   formatSamplingSummary,
   planSample,
@@ -20,6 +19,7 @@ import {
   parseSamplingMode,
 } from "./commands/exec/sampling-options.js";
 import { runBisect } from "./commands/bisect.js";
+import { runSamplingKpi } from "./commands/analyze/eval.js";
 import { loadTuningConfig, type TuningConfig } from "./eval/alpha-tuner.js";
 
 function loadTuningConfigSafe(storagePath: string): TuningConfig {
@@ -29,20 +29,12 @@ function loadTuningConfigSafe(storagePath: string): TuningConfig {
     return { alpha: 1.0 };
   }
 }
-import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
   formatQuarantineTable,
   buildQuarantineIssueOpts,
 } from "./commands/quarantine.js";
 import { isGhAvailable, createGhIssue } from "./gh.js";
-import {
-  runEval,
-  renderEvalReport,
-  runSamplingKpi,
-  writeEvalReport,
-} from "./commands/eval.js";
-import { runReason, formatReasoningReport } from "./commands/reason.js";
 import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
 import { loadCore } from "./core/loader.js";
 import { loadFixtureIntoStore } from "./eval/fixture-loader.js";
@@ -76,8 +68,6 @@ import {
   resolveFallbackSamplingMode,
   type ResolvedProfile,
 } from "./profile.js";
-import { computeKpi } from "./commands/kpi.js";
-import { runInsights } from "./commands/insights.js";
 import { parseConfirmTarget, formatConfirmResult } from "./commands/confirm.js";
 import { runConfirmLocal } from "./commands/confirm-local.js";
 import { runConfirmRemote } from "./commands/confirm-remote.js";
@@ -326,44 +316,6 @@ appendHelpText(
   "  flaker doctor                Check runtime requirements\n",
 );
 
-// --- flaky ---
-program
-  .command("flaky")
-  .description("Inspect flaky tests and failure-rate trends")
-  .option("--top <n>", "Number of top flaky tests to show")
-  .option("--test <filter>", "Filter by test name")
-  .option("--trend", "Show weekly flaky trend (requires --test)")
-  .option("--true-flaky", "Show true flaky tests (same commit with both pass and fail)")
-  .action(async (opts: { top?: string; test?: string; trend?: boolean; trueFlaky?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-
-    try {
-      if (opts.trueFlaky) {
-        const results = await runTrueFlaky({
-          store,
-          top: opts.top ? Number(opts.top) : undefined,
-        });
-        console.log(formatTrueFlakyTable(results));
-        return;
-      }
-      if (opts.trend && opts.test) {
-        const entries = await runFlakyTrend({ store, suite: "", testName: opts.test });
-        console.log(formatFlakyTrend(entries));
-        return;
-      }
-      const results = await runFlaky({
-        store,
-        top: opts.top ? Number(opts.top) : undefined,
-        testName: opts.test,
-      });
-      console.log(formatFlakyTable(results));
-    } finally {
-      await store.close();
-    }
-  });
-
 // --- sample ---
 addSamplingOptions(
   program
@@ -471,37 +423,6 @@ program
     process.exit(report.errors.length > 0 ? 1 : 0);
   });
 
-
-// --- query ---
-program
-  .command("query <sql>")
-  .description("Execute a read-only SQL query against the metrics database")
-  .action(async (sql: string) => {
-    // Reject write operations and dangerous DuckDB functions
-    const stripped = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim();
-    const normalized = stripped.toUpperCase();
-    const writePatterns = /^(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|COPY\s|ATTACH|LOAD|INSTALL)/;
-    if (writePatterns.test(normalized)) {
-      console.error("Error: query command only supports read-only (SELECT/WITH) queries.");
-      process.exit(1);
-    }
-    // Block DuckDB filesystem functions
-    const dangerousFns = /\b(READ_CSV_AUTO|READ_CSV|READ_PARQUET|READ_JSON_AUTO|READ_JSON|READ_BLOB|READ_TEXT|WRITE_CSV|HTTPFS)\s*\(/i;
-    if (dangerousFns.test(stripped)) {
-      console.error("Error: filesystem/network functions are not allowed in query command.");
-      process.exit(1);
-    }
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-
-    try {
-      const rows = await runQuery(store, sql);
-      console.log(formatQueryResult(rows as Record<string, unknown>[]));
-    } finally {
-      await store.close();
-    }
-  });
 
 // --- quarantine ---
 const quarantineCommand = program
@@ -701,61 +622,6 @@ quarantineCommand
           opts.json ? "json" : "markdown",
         ),
       );
-    } finally {
-      await store.close();
-    }
-  });
-
-// --- eval ---
-program
-  .command("eval")
-  .description("Measure whether local sampled runs predict CI")
-  .option("--window <days>", "Analysis window in days")
-  .option("--json", "Output raw JSON report")
-  .option("--markdown", "Output markdown review report")
-  .option("--output <file>", "Write eval report to a file")
-  .action(async (opts: { window?: string; json?: boolean; markdown?: boolean; output?: string }) => {
-    if (opts.json && opts.markdown) {
-      console.error("Cannot use --json and --markdown together");
-      process.exit(1);
-    }
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    const windowDays = opts.window ? Number(opts.window) : config.flaky.window_days;
-    await store.initialize();
-    try {
-      const report = await runEval({ store, windowDays });
-      const rendered = renderEvalReport(report, {
-        json: opts.json,
-        markdown: opts.markdown,
-        windowDays,
-      });
-      console.log(rendered);
-      if (opts.output) {
-        writeEvalReport(resolve(process.cwd(), opts.output), rendered);
-      }
-    } finally {
-      await store.close();
-    }
-  });
-
-// --- reason ---
-program
-  .command("reason")
-  .description("Analyze flaky tests and produce actionable recommendations")
-  .option("--window <days>", "Analysis window in days", "30")
-  .option("--json", "Output raw JSON report")
-  .action(async (opts: { window: string; json?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const report = await runReason({ store, windowDays: Number(opts.window) });
-      if (opts.json) {
-        console.log(JSON.stringify(report, null, 2));
-      } else {
-        console.log(formatReasoningReport(report));
-      }
     } finally {
       await store.close();
     }
@@ -1083,80 +949,6 @@ program
     },
   );
 
-// --- kpi ---
-program
-  .command("kpi")
-  .description("Show KPI dashboard — sampling effectiveness, flaky tracking, data quality")
-  .option("--window-days <days>", "Analysis window in days", "30")
-  .option("--json", "Output as JSON")
-  .action(async (opts: { windowDays: string; json?: boolean }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const { computeKpi, formatKpi } = await import("./commands/kpi.js");
-      const kpi = await computeKpi(store, { windowDays: parseInt(opts.windowDays, 10) });
-      if (opts.json) {
-        console.log(JSON.stringify(kpi, null, 2));
-      } else {
-        console.log(formatKpi(kpi));
-      }
-    } finally {
-      await store.close();
-    }
-  });
-
-// --- insights ---
-program
-  .command("insights")
-  .description("Compare CI vs local failure patterns to identify environment-specific issues")
-  .option("--window-days <days>", "Analysis window in days", "90")
-  .option("--top <n>", "Number of tests to show per category", "20")
-  .action(async (opts: { windowDays: string; top: string }) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-    try {
-      const { runInsights, formatInsights } = await import("./commands/insights.js");
-      const result = await runInsights({
-        store,
-        windowDays: parseInt(opts.windowDays, 10),
-        top: parseInt(opts.top, 10),
-      });
-      console.log(formatInsights(result));
-    } finally {
-      await store.close();
-    }
-  });
-
-// --- context ---
-program
-  .command("context")
-  .description("Show environment data and strategy characteristics for decision-making")
-  .option("--json", "Output as JSON for programmatic consumption")
-  .action(async (opts) => {
-    const config = loadConfig(process.cwd());
-    const store = new DuckDBStore(resolve(config.storage.path));
-    await store.initialize();
-
-    try {
-      const hasResolver = !!(config as any).affected;
-      const { buildContext, formatContext } = await import("./commands/context.js");
-      const ctx = await buildContext(store, {
-        storagePath: config.storage.path,
-        resolverConfigured: hasResolver,
-      });
-
-      if (opts.json) {
-        console.log(JSON.stringify(ctx, null, 2));
-      } else {
-        console.log(formatContext(ctx));
-      }
-    } finally {
-      await store.close();
-    }
-  });
-
 // --- confirm ---
 program
   .command("confirm <target>")
@@ -1269,11 +1061,6 @@ program
     process.exit(report.ok ? 0 : 1);
   });
 
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "flaky"), [
-    "flaker flaky --top 20",
-    "flaker flaky --true-flaky",
-    "flaker flaky --trend --test \"should redirect\"",
-  ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "sample"), [
     "flaker sample",
     "flaker sample --strategy hybrid --count 25",
@@ -1298,17 +1085,6 @@ program
     "flaker quarantine --auto",
     "flaker quarantine --add \"tests/login.spec.ts:should redirect\"",
   ]);
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "eval"), [
-    "flaker eval",
-    "flaker eval --json",
-    "flaker eval --markdown --window 7",
-    "flaker eval --markdown --window 7 --output .artifacts/flaker-review.md",
-  ]);
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "reason"), [
-    "flaker reason",
-    "flaker reason --window 7",
-    "flaker reason --json",
-  ]);
 appendExamplesToCommand(program.commands.find((command) => command.name() === "bisect"), [
     "flaker bisect --test \"should redirect\"",
     "flaker bisect --test \"should redirect\" --suite tests/login.spec.ts",
@@ -1328,10 +1104,6 @@ appendExamplesToCommand(program.commands.find((command) => command.name() === "b
   appendExamplesToCommand(program.commands.find((command) => command.name() === "retry"), [
     "flaker retry",
     "flaker retry --run 12345678",
-  ]);
-  appendExamplesToCommand(program.commands.find((command) => command.name() === "context"), [
-    "flaker context",
-    "flaker context --json",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "eval-fixture"), [
     "flaker eval-fixture",
