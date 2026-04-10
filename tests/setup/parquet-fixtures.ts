@@ -9,6 +9,16 @@ import { existsSync } from "node:fs";
  * `src/parquet_export/write_fixture_test.mbt`, which is not triggered by
  * `pnpm test` on its own. Without this setup step a clean checkout would
  * fail `tests/parquet/duckdb-interop.test.ts`.
+ *
+ * Tolerant behavior:
+ *
+ * 1. If the fixture files already exist, do nothing.
+ * 2. If `moon` is not on PATH (e.g. fallback-mode CI lanes that deliberately
+ *    run without the MoonBit toolchain), skip silently — individual tests
+ *    that need the fixtures will fail with their own clear error, and CI
+ *    lanes that filter to non-parquet tests won't be affected.
+ * 3. If `moon test` runs but fails for another reason, throw so the problem
+ *    surfaces during local development.
  */
 export default async function setup(): Promise<void> {
   const fixtures = [
@@ -18,6 +28,13 @@ export default async function setup(): Promise<void> {
   ];
 
   if (fixtures.every((p) => existsSync(p))) {
+    return;
+  }
+
+  // Check whether `moon` is available at all. If not, skip silently.
+  try {
+    execSync("moon version", { stdio: "ignore" });
+  } catch {
     return;
   }
 

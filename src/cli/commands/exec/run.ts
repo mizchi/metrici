@@ -126,6 +126,8 @@ export async function runTests(opts: RunOpts): Promise<RunCommandResult> {
       exitCode: 0,
       results: [],
       durationMs: 0,
+      stdout: "",
+      stderr: "",
       samplingSummary: plan.summary,
       sampledTests: tests,
       holdoutTests,

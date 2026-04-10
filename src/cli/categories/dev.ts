@@ -266,9 +266,8 @@ export function registerDevCommands(program: Command): void {
     .option("--test-name <name>", "Test name")
     .option("--task-id <id>", "Task ID")
     .option("--filter <filter>", "Filter")
-    .option("--variant <variant>", "Variant")
     .option("--test-id <id>", "Explicit test ID (overrides generation)")
-    .action(async (opts: { suite?: string; testName?: string; taskId?: string; filter?: string; variant?: string; testId?: string }) => {
+    .action(async (opts: { suite?: string; testName?: string; taskId?: string; filter?: string; testId?: string }) => {
       const { createListedTestKey, createMetaKey } = await import("../commands/dev/test-key.js");
       if (!opts.suite && !opts.testId) {
         console.error("Provide --suite (and optionally --test-name) or --test-id");
@@ -279,7 +278,6 @@ export function registerDevCommands(program: Command): void {
         testName: opts.testName ?? "",
         taskId: opts.taskId,
         filter: opts.filter,
-        variant: opts.variant,
         testId: opts.testId,
       });
       const metaKey = createMetaKey({
