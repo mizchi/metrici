@@ -1,7 +1,27 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-function generateToml(owner: string, name: string): string {
+const RUNNER_COMMAND_DEFAULTS: Record<string, string> = {
+  vitest: "pnpm exec vitest run",
+  playwright: "pnpm exec playwright test",
+  jest: "pnpm exec jest",
+  actrun: "actrun",
+};
+
+function adapterSection(adapter?: string): string {
+  if (adapter) return `[adapter]\ntype = "${adapter}"\n`;
+  return `[adapter]\ntype = "playwright"\nartifact_name = "playwright-report"\n# command = "node ./adapter.js"\n`;
+}
+
+function runnerSection(runner?: string): string {
+  if (runner) {
+    const cmd = RUNNER_COMMAND_DEFAULTS[runner] ?? "";
+    return `[runner]\ntype = "${runner}"\ncommand = "${cmd}"\n`;
+  }
+  return `[runner]\ntype = "vitest"\ncommand = "pnpm test"\n`;
+}
+
+function generateToml(owner: string, name: string, adapter?: string, runner?: string): string {
   return `[repo]
 owner = "${owner}"
 name = "${name}"
@@ -9,15 +29,8 @@ name = "${name}"
 [storage]
 path = ".flaker/data"
 
-[adapter]
-type = "playwright"
-artifact_name = "playwright-report"
-# command = "node ./adapter.js"
-
-[runner]
-type = "vitest"
-command = "pnpm test"
-
+${adapterSection(adapter)}
+${runnerSection(runner)}
 # Optional: used by \`flaker run --runner actrun\`
 # [runner.actrun]
 # workflow = ".github/workflows/ci.yml"
@@ -82,10 +95,10 @@ jobs:
 
 export function runInit(
   dir: string,
-  opts: { owner: string; name: string },
+  opts: { owner: string; name: string; adapter?: string; runner?: string },
 ): void {
   const tomlPath = join(dir, "flaker.toml");
-  writeFileSync(tomlPath, generateToml(opts.owner, opts.name), "utf-8");
+  writeFileSync(tomlPath, generateToml(opts.owner, opts.name, opts.adapter, opts.runner), "utf-8");
   mkdirSync(join(dir, ".flaker"), { recursive: true });
 
   // Generate confirm workflow if not exists
