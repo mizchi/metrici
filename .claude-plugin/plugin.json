@@ -1,7 +1,7 @@
 {
   "name": "flaker",
   "version": "0.3.0",
-  "description": "Claude Code skill for setting up @mizchi/flaker on a new repository — encodes the Day 0 → Week 4 onboarding flow with decision points, copy-paste commands, and pitfalls.",
+  "description": "Claude Code skills for introducing and operating @mizchi/flaker — onboarding, advisory rollout, CI promotion, quarantine, and staged Playwright E2E/VRT management.",
   "author": {
     "name": "mizchi",
     "url": "https://github.com/mizchi"

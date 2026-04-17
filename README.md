@@ -41,7 +41,12 @@ Requirements:
 
 ## Install as a Claude Code plugin
 
-This repo also ships a Claude Code plugin (`flaker-setup` skill) that walks an LLM agent through introducing flaker on a fresh repository. Day 0 → Week 4 onboarding flow, decision points, copy-paste commands, and pitfalls — all encoded as a skill so the agent picks the right order automatically.
+This repo also ships a Claude Code plugin with two skills:
+
+- `flaker-setup`
+  Introduce flaker on a fresh repository. Day 0 → Week 4 onboarding flow, decision points, copy-paste commands, and pitfalls.
+- `flaker-management`
+  Operate flaker after setup. Advisory vs required gating, nightly triage, quarantine, flaky tag management, and staged Playwright E2E / VRT rollout.
 
 ```bash
 # In Claude Code
@@ -49,9 +54,14 @@ This repo also ships a Claude Code plugin (`flaker-setup` skill) that walks an L
 /plugin install flaker@flaker
 ```
 
-Then ask the agent something like "新しいプロジェクトに flaker をセットアップしたい" and it will invoke the `flaker-setup` skill.
+Then ask the agent something like:
 
-The full reference checklist (used by the skill) lives at [docs/new-project-checklist.ja.md](docs/new-project-checklist.ja.md).
+- "新しいプロジェクトに flaker をセットアップしたい"
+- "flaker の advisory を required に上げる条件を決めたい"
+- "E2E VRT の nightly triage を設計したい"
+
+The setup reference checklist lives at [docs/new-project-checklist.ja.md](docs/new-project-checklist.ja.md).
+The operations quick start lives at [docs/flaker-management-quickstart.ja.md](docs/flaker-management-quickstart.ja.md) and [docs/flaker-management-quickstart.md](docs/flaker-management-quickstart.md).
 
 ## Use as a MoonBit Library
 
