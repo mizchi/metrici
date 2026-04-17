@@ -1,0 +1,36 @@
+name: flaker-nightly-learning
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  flaker-nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: mkdir -p .artifacts
+      - run: pnpm flaker collect ci --days 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: pnpm flaker run --profile scheduled
+      - run: pnpm flaker analyze flaky-tag --json > .artifacts/flaky-tag-triage.json
+      - run: pnpm flaker analyze eval --markdown --window 7 --output .artifacts/flaker-review.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flaker-nightly-review
+          path: .artifacts/

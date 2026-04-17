@@ -1,0 +1,24 @@
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test -c playwright.config.ts"
+flaky_tag_pattern = "@flaky"
+
+[quarantine]
+auto = true
+flaky_rate_threshold_percentage = 30
+min_runs = 10
+
+[profile.scheduled]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+sample_percentage = 30
+adaptive = true        # enable after enough matched commits / FNR history
+skip_flaky_tagged = true
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 90
+fallback_strategy = "weighted"
+skip_flaky_tagged = true

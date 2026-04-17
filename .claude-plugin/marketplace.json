@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "flaker",
-      "description": "Set up @mizchi/flaker on a new repository. Includes the flaker-setup skill which encodes the Day 0 → Week 4 onboarding flow.",
+      "description": "Introduce and operate @mizchi/flaker on OSS repositories. Includes flaker-setup for onboarding and flaker-management for advisory rollout, CI promotion, quarantine, and Playwright E2E/VRT operations.",
       "version": "0.3.0",
       "source": "./",
       "author": {
