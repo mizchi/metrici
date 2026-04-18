@@ -18,8 +18,16 @@
     "prepack": "pnpm run build"
   },
   "keywords": [],
-  "author": "",
+  "author": "mizchi",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/flaker.git"
+  },
+  "homepage": "https://github.com/mizchi/flaker#readme",
+  "bugs": {
+    "url": "https://github.com/mizchi/flaker/issues"
+  },
   "files": [
     "dist/cli/main.js",
     "dist/moonbit/flaker.js"

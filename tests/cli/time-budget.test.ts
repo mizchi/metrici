@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyTimeBudget } from "../../src/cli/profile.js";
+import { applyTimeBudget } from "../../src/cli/budget.js";
 
 describe("applyTimeBudget", () => {
   const tests = [

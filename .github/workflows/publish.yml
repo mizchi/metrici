@@ -1,0 +1,50 @@
+name: publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - uses: hustcer/setup-moonbit@v1
+
+      - name: MoonBit deps
+        run: moon update
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: |
+          pnpm run typecheck
+          pnpm vitest run
+          moon test --target js
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: CLI smoke
+        run: node dist/cli/main.js --help >/dev/null
+
+      - name: Pack dry-run
+        run: pnpm run pack:check
+
+      - name: Publish to npm (OIDC Trusted Publishing)
+        run: npm publish --access public --provenance

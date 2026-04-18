@@ -3,7 +3,7 @@ import {
   detectProfileName,
   resolveProfile,
   resolveFallbackSamplingMode,
-} from "../../src/cli/profile.js";
+} from "../../src/cli/profile-compat.js";
 import type { ProfileConfig, SamplingConfig } from "../../src/cli/config.js";
 
 describe("profile integration", () => {

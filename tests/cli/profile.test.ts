@@ -6,12 +6,16 @@ import { loadConfig } from "../../src/cli/config.js";
 import {
   detectProfileName,
   resolveProfile,
-  computeAdaptivePercentage,
+  resolveRequestedProfileName,
+} from "../../src/cli/profile-compat.js";
+import {
   gateNameFromProfileName,
   profileNameFromGateName,
-  resolveRequestedProfileName,
-} from "../../src/cli/profile.js";
-import type { AdaptiveSignals } from "../../src/cli/profile.js";
+} from "../../src/cli/gate.js";
+import {
+  computeAdaptivePercentage,
+} from "../../src/cli/adaptive.js";
+import type { AdaptiveSignals } from "../../src/cli/adaptive.js";
 
 // --- Task 1: ProfileConfig type and TOML parsing ---
 
