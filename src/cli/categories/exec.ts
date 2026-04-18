@@ -21,7 +21,7 @@ import {
 import { ActrunRunner } from "../runners/actrun.js";
 import { DuckDBStore } from "../storage/duckdb.js";
 import { createRunner } from "../runners/index.js";
-import { createResolver } from "../resolvers/index.js";
+import { createResolver, type ResolverConfig } from "../resolvers/index.js";
 import { resolveCurrentCommitSha, detectChangedFiles } from "../core/git.js";
 import { loadQuarantineManifestIfExists } from "../quarantine-manifest.js";
 import { runSamplingKpi } from "../commands/analyze/eval.js";
@@ -55,8 +55,8 @@ Use --profile only when you need an advanced or custom profile name.
 `;
 
 function createConfiguredResolver(
+  affectedConfig: ResolverConfig,
   cwd: string,
-  affectedConfig: { resolver: string; config: string },
 ) {
   return createResolver(
     {
