@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/mizchi/flaker/compare/flaker-v0.5.0...flaker-v0.5.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* align configured resolver signature ([92af3c8](https://github.com/mizchi/flaker/commit/92af3c8b3fb807bfc9c831f192f95c5c0f4aed87))
+* build package before publish verification ([70a1d76](https://github.com/mizchi/flaker/commit/70a1d7657545a407816d18a543a8f9b3f4d433e2))
+* fetch full history in publish workflow ([1eb829f](https://github.com/mizchi/flaker/commit/1eb829ffd3e8fc051e78c715a0c389b9d4d5694c))
+
 ## [0.5.0](https://github.com/mizchi/flaker/compare/flaker-v0.4.0...flaker-v0.5.0) (2026-04-18)
 
 
