@@ -155,6 +155,43 @@ detection_threshold_ratio = 0.02       # Mark as flaky above this ratio
 
 ## Command Reference
 
+### `flaker plan` / `flaker apply` — Declarative convergence
+
+```bash
+flaker plan           # Show the diff against current state (dry-run)
+flaker plan --json
+flaker plan --output .artifacts/flaker-plan.json   # Persist PlanArtifact
+
+flaker apply          # Auto-run collect / calibrate / run / quarantine apply to close the gap
+flaker apply --json
+flaker apply --output .artifacts/flaker-apply.json # Persist ApplyArtifact
+
+# 0.9.0 subsumed ops daily. weekly still works, incident is a stub until 1.0.0:
+flaker apply --emit daily   --output .artifacts/flaker-daily.md
+flaker apply --emit weekly  --output .artifacts/flaker-weekly.md
+flaker apply --emit incident  # Currently a stub that redirects to flaker ops incident
+```
+
+`flaker.toml` is treated as the **desired state**, and the planner inspects the current DB state to decide what to do. A brand-new repo with no history gets `collect_ci` + `cold_start_run`; a repo with enough history gets `collect_ci` + `calibrate` + `quarantine_apply`. The user does not have to memorize the ordering.
+
+`flaker status` compares the `[promotion]` thresholds against the current KPIs and reports drift.
+
+#### `--json` output shape in 0.9.0
+
+`flaker apply --json`:
+
+- `executed[*].status`: `"ok" | "failed" | "skipped"` (the old `.ok: boolean` + top-level `aborted` are removed)
+- `executed[*].skippedReason?: string`: reason why a step was skipped due to a dependency failure
+- Exit code is 1 only when `status === "failed"`; skipped is 0
+
+`flaker status --json`'s `drift.unmet[*]` similarly moved from `{ field, threshold }` to `{ kind, desired }`.
+
+#### How `--emit` and `ops` divide up
+
+- `apply --emit daily`: emits the same cadence artifact as the old `flaker ops daily` (merged in 0.9.0; `ops daily` is deprecated).
+- `apply --emit weekly`: emits the weekly rollup. `flaker ops weekly` stays first-class because it also carries operator-oriented narrative (quarantine proposals, flaky-tag triage, etc.).
+- `apply --emit incident`: currently a stub. For incident investigation use `flaker ops incident --run <id>` or `flaker debug retry / confirm / diagnose`. In 1.0.0 the `--incident-*` flags will be absorbed here.
+
 ### `flaker collect` — Collect from CI
 
 ```bash
@@ -185,6 +222,47 @@ flaker import report.json --commit abc123 --branch feature-x
 Import locally-generated test reports directly into the database.
 
 With `--adapter custom`, you provide an arbitrary command that receives the file contents on stdin and returns `TestCaseResult[]` JSON on stdout. This is the bridge for importing non-Playwright / non-JUnit report formats.
+
+#### `vrt-migration` adapter — versioned schema (recommended)
+
+The `vrt-migration` adapter accepts two formats:
+
+1. **Legacy**: `{ dir, variants[], viewports[], results[] }` (0.3.x compatible)
+2. **Versioned** (recommended): `{ schema: "studio-vrt-flaker", schemaVersion: 1, dir, results[] }`
+
+The versioned format can express interaction scenarios (click / hover / input / scroll) with a stable identity. In the legacy format the only way to represent interaction scenarios was to cram `#interaction-*` into the variant name, which caused scenarios within the same domain to be split across separate suites.
+
+Versioned shape:
+
+```json
+{
+  "schema": "studio-vrt-flaker",
+  "schemaVersion": 1,
+  "dir": "regression/preview-vs-hrc",
+  "results": [
+    {
+      "domain": "papplica.app",
+      "scenario": "interaction-hero-hover",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "diffPixels": 466,
+      "approved": true
+    }
+  ]
+}
+```
+
+Identity mapping on the flaker side:
+
+| Input field | → flaker identity |
+|---|---|
+| `dir` + `domain` | `suite = "regression/preview-vs-hrc/papplica.app"` |
+| `viewport` + `scenario` | `test_name = "viewport:desktop / scenario:interaction-hero-hover"` |
+| (scenario is `"initial"` or omitted) | `test_name = "viewport:desktop"` (no suffix) |
+| `backend`, `viewport`, `width`, `height`, `scenario` | `variant = { ... }` |
+
+Because both the initial image and interaction scenarios for the same domain live under the same suite, suite-based aggregation and affected-suites handling stay natural. Both producer and consumer can declare `schemaVersion`, so historical data stays consistent.
 
 ### `flaker collect local` — Import actrun History
 
@@ -245,7 +323,7 @@ Surfaces threshold-adjustment candidates based on fluctuations in sampling effec
 
 #### `explain cluster` — co-failure clusters
 
-Co-failure cluster detection. Full configuration details are in `[sampling].cluster_mode` (see [how-to-use.ja.md](how-to-use.ja.md) for the complete reference).
+Co-failure cluster detection. See the [co-failure clustering](#co-failure-clustering-samplingcluster_mode) section below for the full configuration reference.
 
 ```bash
 flaker explain cluster --min-co-rate 0.9
@@ -363,6 +441,53 @@ Notes:
   --explain can be combined with --dry-run or a real run
 ```
 
+### Co-failure clustering (`[sampling].cluster_mode`)
+
+Treats tests that fail together in the same run as a cluster and picks **one representative** from each cluster during sampling, so a small budget still covers diverse failure patterns. Useful when sampling tens of thousands of VRT scenarios.
+
+#### Configuration
+
+```toml
+[sampling]
+cluster_mode = "spread"   # "off" (default) | "spread" | "pack"
+co_failure_window_days = 90
+```
+
+| mode | Behavior |
+|---|---|
+| `off` | Ignore clusters. Plain `weighted` / `hybrid` sampling. |
+| `spread` | Pick **only one** test from each cluster and fill the remaining budget with normal weighted sampling. Prioritizes diversity. |
+| `pack` | Pick tests from the same cluster **together**. Use when you want to drill down into a common root cause. |
+
+`cluster_mode` only applies to the `weighted` / `hybrid` strategies. It is ignored for `affected` / `full`.
+
+#### Cluster detection thresholds
+
+`queryTestCoFailures` aggregates `test_results` to compute co-occurrence rates, then `buildFailureClusters` forms clusters. Defaults:
+
+- `windowDays`: 90 days
+- `minCoFailures`: 2 (minimum co-occurrences)
+- `minCoRate`: 0.8 (at least 80% co-occurrence rate)
+
+Each knob is tunable per invocation via `flaker explain cluster`:
+
+```bash
+flaker explain cluster                                   # Defaults (window=90, min-co=2, min-rate=0.8, top=20)
+flaker explain cluster --min-co-rate 0.9                 # Only tight clusters with 90%+ co-occurrence
+flaker explain cluster --window-days 30 --top 50         # Last 30 days, top 50 clusters
+flaker explain cluster --json                            # Machine-readable output
+```
+
+#### Difference from existing `co_failure_boost`
+
+| | `co_failure_boost` | cluster_mode |
+|---|---|---|
+| Correlation | file change ↔ test failure | test failure ↔ test failure |
+| Purpose | Prioritize "tests related to a change" in affected sampling | Add diversity to the sample budget / drill deeper |
+| Data | `commit_changes` + `test_results` | `test_results` only |
+
+The two settings do not conflict. `cluster_mode` is applied as the final step of `weighted` / `hybrid` (after boost-driven reordering, the cluster representative is picked).
+
 ### `flaker collect coverage` — Import Coverage Edges
 
 ```bash
@@ -390,6 +515,38 @@ min_runs = 10
 - List: `flaker status --list quarantined`
 - For manual overrides, edit `.flaker/quarantine-manifest.toml` directly and commit (apply respects an existing manifest)
 - Exclude from runs as before: `flaker run --skip-quarantined`
+
+### `flaker debug retry` — Reproduce CI failures locally
+
+```bash
+flaker debug retry                      # Take failing tests from the latest failed CI run, re-run them locally
+flaker debug retry --run 12345678       # Pin to a specific workflow run id
+```
+
+Extracts the failing tests from the CI failure artifact and re-runs them locally in a single batch. Positioned as the **first command to try** — use it to do a coarse "reproduces / does not reproduce" triage of multiple CI failures at once. The output is binary (reproduced / not) and does not attempt the `BROKEN/FLAKY/TRANSIENT` classification. When you need the finer classification, feed the non-reproducing tests into `flaker debug confirm`.
+
+### `flaker debug confirm` — Classify a failure into 3 buckets
+
+```bash
+# remote: trigger workflow_dispatch and repeat in CI
+flaker debug confirm "tests/api.test.ts:handles timeout"
+flaker debug confirm "tests/api.test.ts:handles timeout" --repeat 10
+
+# local: repeat with the local runner
+flaker debug confirm "tests/api.test.ts:handles timeout" --runner local
+```
+
+Runs one test `--repeat N` times and classifies the result into 3 buckets (`--repeat` defaults to `5`):
+
+| Classification | Condition | Meaning / Recommended action |
+|---|---|---|
+| `BROKEN` | `failures == N` | Fails every time. Fix as a regression |
+| `FLAKY` | `0 < failures < N` | Intermittent failures. Add `@flaky` tag or quarantine |
+| `TRANSIENT` | `failures == 0` | Does not reproduce. Record only as CI-environment noise |
+
+Use `--repeat 10` or higher when you suspect the default of `5` misses low-frequency flakies. More repeats stabilize the classification at the cost of wall time.
+
+Remote mode requires `.github/workflows/flaker-confirm.yml`. For repos without it, regenerate with `flaker init --force` or copy `templates/flaker-confirm.yml`.
 
 ### `flaker debug bisect` — Find Culprit Commit
 
@@ -431,6 +588,8 @@ Run SQL directly against DuckDB. Full access to window functions, FILTER clauses
 
 ## Runner-Specific Setup
 
+Defaults emitted by `flaker init --adapter <type> --runner <type>` are shown below. `[adapter].type` selects the report parser; `[runner].type` is the actual test runner.
+
 ### Vitest
 
 ```toml
@@ -452,6 +611,32 @@ type = "playwright"
 type = "playwright"
 command = "pnpm exec playwright test"
 ```
+
+### Jest
+
+```toml
+[adapter]
+type = "jest"       # or "junit" (when using the jest-junit reporter)
+
+[runner]
+type = "jest"
+command = "pnpm exec jest"
+```
+
+Generate the Jest JSON report with `jest --json --outputFile=report.json`. Switch to `--adapter junit` when you use the `jest-junit` reporter.
+
+### JUnit XML (runner-agnostic)
+
+```toml
+[adapter]
+type = "junit"
+
+[runner]
+type = "custom"
+execute = "..."   # runner is up to you
+```
+
+Any runner that emits JUnit XML — Ant / Gradle / Maven / pytest, etc. — can be imported this way.
 
 ### MoonBit (moon test)
 
@@ -477,6 +662,42 @@ list = "node ./my-runner.js list"         # stdout: TestId[]
 ```
 
 See [Runner Adapters](runner-adapters.md) for details.
+
+### Per-runner `[runner.actrun]` examples
+
+When using `flaker run --runner actrun`, add `[runner.actrun]` in addition to `[runner]` to point at the workflow file.
+
+```toml
+# Playwright E2E via actrun
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test -c playwright.config.ts"
+[runner.actrun]
+workflow = ".github/workflows/e2e.yml"
+local = true
+trust = true
+
+# Vitest via actrun (run unit / integration tests locally in the same environment as CI)
+[runner]
+type = "vitest"
+command = "pnpm exec vitest run"
+[runner.actrun]
+workflow = ".github/workflows/ci.yml"
+job = "test"
+local = true
+trust = true
+```
+
+### Per-runner behavior of `flaky_tag_pattern` / `skip_flaky_tagged`
+
+| Runner | Tag syntax | Behavior of `skip_flaky_tagged = true` |
+|---|---|---|
+| `playwright` | Embed `@flaky` in the test name (e.g. `test("login @flaky", ...)` or in the `test.describe` hierarchy) | Automatically appends `--grep-invert @flaky` |
+| `vitest` | Not currently supported | `skip_flaky_tagged` is a no-op. To exclude `@flaky` tests, hand-write `test.skipIf` or `--testNamePattern` |
+| `jest` | Not currently supported | Same as above. Use `describe.skip` / `it.skip` for individual skips |
+| `custom` | Up to the runner | Implement arbitrary filtering inside the `execute` command |
+
+The `@flaky` add/remove proposals emitted by `flaker ops weekly` / `flaker analyze flaky-tag` assume Playwright. For Vitest / Jest you have to parse the proposal JSON and apply it yourself (no automatic apply in 0.7.x).
 
 ---
 
@@ -517,6 +738,25 @@ task("tests/checkout", srcs=["src/checkout/**"], needs=["tests/auth"])
 ```
 
 Supports file-level granularity.
+
+### glob (manual rules)
+
+```toml
+[affected]
+resolver = "glob"
+config = "flaker.affected.toml"
+```
+
+```toml
+# flaker.affected.toml
+[[rules]]
+tests = ["tests/auth/**"]
+srcs = ["src/auth/**", "src/utils/**"]
+
+[[rules]]
+tests = ["tests/checkout/**"]
+srcs = ["src/checkout/**"]
+```
 
 ### simple (fallback)
 
