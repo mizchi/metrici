@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.10.0 (breaking)
+
+Terraform-parity apply surface + `ops daily` removal + docs sweep. Replaces the previously-scoped 1.0.0 — we remain on the 0.x line until empirical stability justifies 1.0.
+
+### New
+
+- `flaker apply --target <kind>` — partial reconciliation; runs only actions of the given kind (`collect_ci | calibrate | cold_start_run | quarantine_apply`), shows the rest as `status: "skipped"` with `skippedReason: "not in --target"`.
+- `flaker apply --refresh-only` — run probe + state-diff + planApply but skip `executeDag`. Writes a `PlanArtifact` when `--output` is set.
+- `flaker apply --plan-file <file>` — load a previously-saved `PlanArtifact`, skip the planner, execute the stored actions. Warns + aborts (unless `--force`) when the current observed state has new drift kinds absent from the stored plan.
+- `flaker apply --force` — skip the `--plan-file` drift guard.
+- `flaker apply --emit incident` now has full wiring (was a stub in 0.9.0). New flags: `--incident-run <id>`, `--incident-suite <name>`, `--incident-test <name>`. Requires `--incident-run` OR both `--incident-suite` AND `--incident-test`.
+- `deserializePlanArtifact()` helper in `src/cli/commands/apply/artifact.ts` with shape validation.
+
+### Removed (breaking)
+
+- `flaker ops daily` — the 0.9.0 deprecation cycle (one minor version) is complete. Use `flaker apply --emit daily`. `runOpsDaily` action code kept internally since apply still calls it.
+- `src/cli/deprecation.ts` helper — no remaining in-tree callers after `ops daily` removal.
+
+### Docs
+
+- `docs/how-to-use.md` (EN) parallel sweep matching the 0.9.1 JA cleanup: removes 5 stale top-level sections for commands deleted in 0.8.0.
+- Full `flaker explain` umbrella section in both JA and EN covering all 5 topics (`reason / insights / cluster / bundle / context`).
+- `flaker dev` subtree relocated to a single `Advanced / Maintainer tools` section at the end of both JA and EN references; inline pointer retained in the old location.
+
+### Known gaps (follow-up)
+
+- EN `docs/how-to-use.md` is missing 9 sections present in JA (declarative convergence, debug retry/confirm, Jest adapter, JUnit runner, etc.). Tracked in #60 as a backfill for 0.10.1 or later.
+
 ## 0.9.1
 
 Docs patch (closes #58). No code changes.

@@ -286,17 +286,14 @@ flaker status --list flaky --json          # 機械可読
 
 ### `flaker explain <topic>` — AI 分析
 
-旧 `flaker analyze reason/insights/cluster/bundle/context` は 0.8.0 で `flaker explain <topic>` umbrella に集約。
+旧 `flaker analyze reason/insights/cluster/bundle/context` は 0.8.0 で `flaker explain <topic>` umbrella に集約。5 つの分析トピックを提供する。
+
+#### `explain reason` — flaky 分類と推奨アクション
 
 ```bash
-flaker explain reason                     # flaky テスト分類 + 推奨アクション
+flaker explain reason                     # 分類 + 推奨レポート
 flaker explain reason --json              # 機械可読 JSON
 flaker explain reason --window-days 7     # 直近 7 日間で分析
-
-flaker explain cluster                    # co-failure クラスタ (co-failure クラスタリング節を参照)
-flaker explain insights                   # sampling KPI からの adaptive insights
-flaker explain bundle                     # bundle level 失敗の集約
-flaker explain context                    # 障害 context 抽出
 ```
 
 `reason` が返す分類:
@@ -315,6 +312,42 @@ flaker explain context                    # 障害 context 抽出
 リスク予測:
 - 現在安定だが、直近で失敗が出始めたテスト
 - 実行時間の分散が大きいテスト
+
+#### `explain insights` — sampling KPI からの adaptive insights
+
+```bash
+flaker explain insights
+flaker explain insights --json
+```
+
+sampling effectiveness / false negative rate の変動から、閾値の見直し候補を提示する。
+
+#### `explain cluster` — 同時失敗クラスタ
+
+co-failure クラスタ検出。詳細は [co-failure クラスタリング](#co-failure-クラスタリング-samplingcluster_mode) 節を参照。
+
+```bash
+flaker explain cluster --min-co-rate 0.9
+flaker explain cluster --window-days 30 --top 50
+flaker explain cluster --json
+```
+
+#### `explain bundle` — bundle 単位の失敗集約
+
+同一 bundle (suite のプレフィクス等) で連動して失敗するテスト群を要約。共有 fixture / env 問題の候補を特定する。
+
+```bash
+flaker explain bundle
+```
+
+#### `explain context` — 失敗 context 抽出
+
+失敗テストから error message / stdout / stderr / artifact path を切り出し、類似 context のクラスタを提示。
+
+```bash
+flaker explain context
+flaker explain context --test "handles timeout"
+```
 
 ### `flaker run --dry-run` — テストサンプリング（dry run）
 
@@ -467,14 +500,7 @@ flaker collect coverage --format playwright --input .artifacts/coverage
 
 `coverage-guided` sampling 用に、テストごとの coverage edge を DuckDB へ取り込みます。directory input も受け付け、重複 edge は insert 前に dedupe されます。
 
-### `flaker dev train` — GBDT モデル学習
-
-```bash
-flaker dev train
-flaker dev train --window-days 30 --num-trees 10 --learning-rate 0.3
-```
-
-蓄積済みの CI / local history から `.flaker/models/gbdt.json` を生成します。local run も低い重みで学習に含め、保存される model には `gbdt` sampling で使う feature 名も入ります。
+(メンテナ用コマンドは末尾の Advanced / Maintainer tools 節を参照)
 
 ### quarantine の管理 — `flaker apply` + `[quarantine].auto`
 
@@ -851,3 +877,18 @@ flaker policy quarantine --remove "suite>testName"
 `flaky_rate_threshold` の単位解釈も変わりました。以前は `30.0` を「30%」、`0.3` を自動正規化して扱っていましたが、現在はそのまま percentage として解釈します。旧設定が `flaky_rate_threshold = 0.3` だった場合は `flaky_rate_threshold_percentage = 30` にリネームしてください。
 
 範囲検証は `flaker debug doctor` と `flaker policy check` が担当します: `*_ratio` は [0.0, 1.0]、`*_percentage` は [0, 100]、`*_days` / `*_seconds` / `*_count` は非負整数でなければなりません。
+
+---
+
+## Advanced / Maintainer tools
+
+通常の日常利用では不要なメンテナ向けコマンド群。ML モデルのチューニングや内部評価に使う。
+
+### `flaker dev train` — GBDT モデル学習
+
+```bash
+flaker dev train
+flaker dev train --window-days 30 --num-trees 10 --learning-rate 0.3
+```
+
+蓄積済みの CI / local history から `.flaker/models/gbdt.json` を生成します。local run も低い重みで学習に含め、保存される model には `gbdt` sampling で使う feature 名も入ります。

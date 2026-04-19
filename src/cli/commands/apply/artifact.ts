@@ -41,3 +41,16 @@ export function writeArtifact(path: string, content: string): void {
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, content, "utf8");
 }
+
+export function deserializePlanArtifact(json: string): PlanArtifact {
+  const parsed = JSON.parse(json) as unknown;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid plan artifact: expected JSON object");
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.generatedAt !== "string") throw new Error("Invalid plan artifact: missing generatedAt");
+  if (!obj.diff || typeof obj.diff !== "object") throw new Error("Invalid plan artifact: missing diff");
+  if (!Array.isArray(obj.actions)) throw new Error("Invalid plan artifact: missing actions");
+  if (!obj.probe || typeof obj.probe !== "object") throw new Error("Invalid plan artifact: missing probe");
+  return obj as unknown as PlanArtifact;
+}
