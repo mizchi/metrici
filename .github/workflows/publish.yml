@@ -61,7 +61,10 @@ jobs:
         run: node dist/cli/main.js --help >/dev/null
 
       - name: Pack dry-run
-        run: pnpm run pack:check
+        # pack:check triggers prepack → pnpm run build → moon build. Run inside
+        # the nix devShell so moon is on PATH.
+        run: nix develop --command pnpm run pack:check
 
       - name: Publish to npm (OIDC Trusted Publishing)
-        run: npm publish --access public --provenance
+        # npm publish also triggers prepack → moon build. Run inside nix.
+        run: nix develop --command npm publish --access public --provenance
