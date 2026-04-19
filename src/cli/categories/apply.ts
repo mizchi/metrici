@@ -27,6 +27,12 @@ import {
 import type { StateDiff } from "../commands/apply/state.js";
 import { runOpsDaily, formatOpsDailyReport } from "../commands/ops/daily.js";
 import { runOpsWeekly, formatOpsWeeklyReport } from "../commands/ops/weekly.js";
+import { runOpsIncident, formatOpsIncidentReport } from "../commands/ops/incident.js";
+import { runRetry } from "../commands/debug/retry.js";
+import { runConfirmLocal } from "../commands/debug/confirm-local.js";
+import { runConfirmRemote } from "../commands/debug/confirm-remote.js";
+import { runDiagnose } from "../commands/debug/diagnose.js";
+import { createTestResultAdapter } from "../adapters/index.js";
 import { createRunner } from "../runners/index.js";
 
 function describeAction(action: PlannedAction): string {
@@ -117,6 +123,11 @@ export async function applyAction(opts: {
   refreshOnly?: boolean;
   planFile?: string;
   force?: boolean;
+  incidentRun?: string;
+  incidentSuite?: string;
+  incidentTest?: string;
+  incidentRepeat?: string;
+  incidentRunner?: string;
 }): Promise<void> {
   // Mutual exclusion: --refresh-only and --plan-file
   if (opts.refreshOnly && opts.planFile) {
@@ -146,11 +157,23 @@ export async function applyAction(opts: {
     return;
   }
   if (opts.emit === "incident") {
-    console.error(
-      "Error: --emit incident requires --incident-* args (coming in 1.0.0). Use `flaker ops incident` for now.",
-    );
-    process.exitCode = 2;
-    return;
+    const hasRun = opts.incidentRun !== undefined;
+    const hasSuite = opts.incidentSuite !== undefined;
+    const hasTest = opts.incidentTest !== undefined;
+    if (!hasRun && !(hasSuite && hasTest)) {
+      console.error(
+        "Error: --emit incident requires --incident-run <id> OR both --incident-suite and --incident-test.",
+      );
+      process.exitCode = 2;
+      return;
+    }
+    if ((hasSuite && !hasTest) || (!hasSuite && hasTest)) {
+      console.error(
+        "Error: --incident-suite and --incident-test must be provided together.",
+      );
+      process.exitCode = 2;
+      return;
+    }
   }
 
   const cwd = process.cwd();
@@ -341,6 +364,63 @@ export async function applyAction(opts: {
         cwd,
       });
       emitted = { kind: "weekly" as EmitKind, report: weeklyReport };
+    } else if (opts.emit === "incident") {
+      const runner = createRunner(config.runner);
+      const adapter = createTestResultAdapter(config.adapter.type, config.adapter.command);
+      const repo = `${config.repo.owner}/${config.repo.name}`;
+      const runId = opts.incidentRun ? parseInt(opts.incidentRun, 10) : undefined;
+      const repeat = opts.incidentRepeat ? parseInt(opts.incidentRepeat, 10) : 5;
+      const confirmRunner = (opts.incidentRunner as "local" | "remote" | undefined) ?? "local";
+      const incidentReport = await runOpsIncident({
+        runId,
+        suite: opts.incidentSuite,
+        testName: opts.incidentTest,
+        repeat,
+        confirmRunner,
+        diagnoseRuns: 3,
+        retry: runId == null
+          ? undefined
+          : async (resolvedRunId) =>
+            runRetry({
+              runId: resolvedRunId,
+              repo,
+              adapter,
+              runner,
+              artifactName: config.adapter.artifact_name ?? `${config.adapter.type}-report`,
+              cwd,
+            }),
+        confirm: !(opts.incidentSuite && opts.incidentTest)
+          ? undefined
+          : async ({ suite, testName, repeat: resolvedRepeat, runner: resolvedRunner }) =>
+            resolvedRunner === "local"
+              ? runConfirmLocal({
+                suite,
+                testName,
+                repeat: resolvedRepeat,
+                runner,
+                cwd,
+              })
+              : runConfirmRemote({
+                suite,
+                testName,
+                repeat: resolvedRepeat,
+                repo,
+                workflow: "flaker-confirm.yml",
+                adapter: config.adapter.type,
+              }),
+        diagnose: !(opts.incidentSuite && opts.incidentTest)
+          ? undefined
+          : async ({ suite, testName, runs }) =>
+            runDiagnose({
+              runner,
+              suite,
+              testName,
+              runs,
+              mutations: ["all"],
+              cwd,
+            }),
+      });
+      emitted = { kind: "incident" as EmitKind, report: incidentReport };
     }
 
     if (opts.json) {
@@ -371,6 +451,8 @@ export async function applyAction(opts: {
           console.log(formatOpsDailyReport(emitted.report as Parameters<typeof formatOpsDailyReport>[0]));
         } else if (emitted.kind === "weekly") {
           console.log(formatOpsWeeklyReport(emitted.report as Parameters<typeof formatOpsWeeklyReport>[0]));
+        } else if (emitted.kind === "incident") {
+          console.log(formatOpsIncidentReport(emitted.report as Parameters<typeof formatOpsIncidentReport>[0]));
         }
       }
 
@@ -413,5 +495,10 @@ export function registerApplyCommands(program: Command): void {
     .option("--refresh-only", "Run probe + state-diff + plan but skip execution (writes PlanArtifact if --output set)")
     .option("--plan-file <file>", "Load a previously-saved PlanArtifact and execute its stored actions")
     .option("--force", "Force execution even if repo state has drifted from the plan file")
+    .option("--incident-run <id>", "Workflow run ID for incident retry (use with --emit incident)")
+    .option("--incident-suite <name>", "Suite path for incident confirm/diagnose (use with --emit incident)")
+    .option("--incident-test <name>", "Test name for incident confirm/diagnose (use with --emit incident)")
+    .option("--incident-repeat <n>", "Number of confirm repetitions for incident (default 5)")
+    .option("--incident-runner <mode>", "Confirm runner for incident: local or remote (default local)")
     .action(applyAction);
 }
