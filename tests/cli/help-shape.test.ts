@@ -21,8 +21,8 @@ describe("flaker --help", () => {
     expect(top).toContain("Advanced:");
   });
 
-  it("contains Deprecated section", () => {
-    expect(top).toContain("Deprecated (removed in 0.8.0):");
+  it("no longer contains Deprecated section (removed in 0.8.0)", () => {
+    expect(top).not.toContain("Deprecated (removed in 0.8.0):");
   });
 
   // setup, exec, collect, policy categories removed in 0.8.0 — checks dropped.

@@ -13,14 +13,13 @@ describe("ops daily is Advanced, not Deprecated", () => {
     expect(res.stderr).not.toContain("deprecated");
   });
 
-  it("top-level --help lists `ops` under Advanced, not Deprecated", () => {
+  it("top-level --help lists `ops` under Advanced (Deprecated section removed in 0.8.0)", () => {
     const res = spawnSync("node", [CLI, "--help"], { encoding: "utf8" });
     const stdout = res.stdout;
     const advancedStart = stdout.indexOf("Advanced:");
-    const deprecatedStart = stdout.indexOf("Deprecated (removed in 0.8.0)");
     expect(advancedStart).toBeGreaterThan(-1);
-    expect(deprecatedStart).toBeGreaterThan(advancedStart);
-    const deprecatedBlock = stdout.slice(deprecatedStart);
-    expect(deprecatedBlock).not.toMatch(/^\s+ops daily\b/m);
+    const advancedBlock = stdout.slice(advancedStart);
+    expect(advancedBlock).toMatch(/^\s+ops daily\|weekly\|incident/m);
+    expect(stdout).not.toMatch(/Deprecated \(removed in 0\.8\.0\)/);
   });
 });

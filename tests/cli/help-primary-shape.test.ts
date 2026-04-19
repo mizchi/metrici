@@ -24,8 +24,8 @@ describe("flaker --help top-level shape (Task 11)", () => {
     expect(stdout).toMatch(/Advanced:/i);
   });
 
-  it("contains a Deprecated section", () => {
-    expect(stdout).toMatch(/Deprecated/i);
+  it("no longer contains a Deprecated section (removed in 0.8.0)", () => {
+    expect(stdout).not.toMatch(/Deprecated/i);
   });
 
   const primaryNames = [

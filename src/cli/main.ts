@@ -115,25 +115,11 @@ Primary commands:
 
 Advanced:
   ops daily|weekly|incident         Cadence artifact bundles
-  analyze query                     (legacy — use \`flaker query\`)
   dev <train|tune|self-eval|...>    Maintainer tools
 
-Deprecated (removed in 0.8.0):
-  setup init                        → flaker init
-  exec run / exec affected          → flaker run
-  collect ci|local|coverage|calibrate → flaker apply
-  quarantine suggest|apply          → flaker apply
-  policy quarantine|check|report    → flaker apply
-  analyze kpi|eval|flaky|flaky-tag  → flaker status (see --list, --markdown)
-  analyze reason|insights|cluster|bundle|context → flaker explain <topic>
-  analyze query                     → flaker query
-  import report|parquet             → flaker import <file>
-  report summary|diff|aggregate     → flaker report <file> --summary|--diff|--aggregate
-  debug doctor                      → flaker doctor
-  gate review|history|explain       → flaker status --gate <name> [--detail]
-  kpi                               → flaker analyze kpi (also deprecated)
-
 Run \`flaker <command> --help\` for details.
+If you used legacy forms (collect*, analyze*, gate*, etc.) removed in
+0.8.0, see docs/migration-0.6-to-0.7.md for the canonical replacements.
 `;
     return base + extras;
   };
