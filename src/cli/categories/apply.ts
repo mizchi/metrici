@@ -6,7 +6,7 @@ import { DuckDBStore } from "../storage/duckdb.js";
 import { computeKpi } from "../commands/analyze/kpi.js";
 import { planApply, type PlannedAction } from "../commands/apply/planner.js";
 import { probeRepo } from "../commands/apply/probe.js";
-import { collectCiAction } from "./collect.js";
+import { runCollectCi } from "./collect.js";
 import { runQuarantineSuggest } from "../commands/quarantine/suggest.js";
 import { runQuarantineApply } from "../commands/quarantine/apply.js";
 import { prepareRunRequest } from "../commands/exec/prepare-run-request.js";
@@ -67,7 +67,7 @@ export async function applyAction(opts: { json?: boolean }): Promise<void> {
 
     const deps: ExecutorDeps = {
       collectCi: async ({ windowDays }) =>
-        collectCiAction({ days: String(windowDays) }),
+        runCollectCi({ store, config, cwd, days: windowDays }),
       calibrate: async () => {
         const { analyzeProject, recommendSampling } = await import(
           "../commands/collect/calibrate.js"
