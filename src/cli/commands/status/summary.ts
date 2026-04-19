@@ -245,7 +245,7 @@ export function formatStatusSummary(summary: StatusSummary): string {
     "## Gates",
   ];
 
-  for (const gate of ["iteration", "merge", "release"] as const) {
+  for (const gate of Object.keys(summary.gates) as GateName[]) {
     const info = summary.gates[gate];
     lines.push(
       `  ${gate}: ${info.strategy} via ${info.profile}`

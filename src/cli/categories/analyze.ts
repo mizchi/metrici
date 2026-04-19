@@ -36,7 +36,7 @@ import {
   runStatusListFlaky,
   runStatusListQuarantined,
 } from "../commands/status/summary.js";
-import type { GateName } from "../gate.js";
+import { type GateName, VALID_GATE_NAMES } from "../gate.js";
 import { deprecate } from "../deprecation.js";
 
 export async function analyzeKpiAction(opts: { windowDays: string; json?: boolean }): Promise<void> {
@@ -91,6 +91,13 @@ export async function statusAction(opts: {
     }
     if (opts.list) {
       console.error(`Error: unknown --list value '${opts.list}'. Use 'flaky' or 'quarantined'.`);
+      process.exit(2);
+    }
+
+    if (opts.gate && !(VALID_GATE_NAMES as readonly string[]).includes(opts.gate)) {
+      console.error(
+        `Error: unknown --gate value '${opts.gate}'. Valid gates: ${VALID_GATE_NAMES.join(" | ")}.`,
+      );
       process.exit(2);
     }
 
