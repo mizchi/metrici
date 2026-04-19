@@ -88,7 +88,8 @@ describe("top-level aliases", () => {
 
   it("flaker doctor --help shows the top-level doctor alias", () => {
     const help = execSync(`node ${cliPath} doctor --help`, { encoding: "utf-8" });
-    expect(help).toContain("DEPRECATED alias for `flaker debug doctor`");
+    expect(help).toContain("DEPRECATED");
+    expect(help).toContain("flaker debug doctor");
   });
 
   it("flaker collect --help shows collect subcommands and ci options", () => {

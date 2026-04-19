@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command, type HelpContext } from "commander";
+import { Command } from "commander";
 import { registerSetupCommands, setupInitAction } from "./categories/setup.js";
 import { registerExecCommands, execRunAction, RUN_COMMAND_HELP } from "./categories/exec.js";
 import { registerCollectCommands } from "./categories/collect.js";
@@ -15,23 +15,7 @@ import { registerDebugCommands, debugDoctorAction } from "./categories/debug.js"
 import { registerPolicyCommands } from "./categories/policy.js";
 import { registerDevCommands } from "./categories/dev.js";
 import { registerApplyCommands } from "./categories/apply.js";
-
-function warnDeprecated(aliasName: string, canonical: string): void {
-  process.stderr.write(
-    `warning: \`flaker ${aliasName}\` is deprecated and will be removed in 0.7.0. `
-    + `Use \`${canonical}\` instead.\n`,
-  );
-}
-
-function attachDeprecationWarning(cmd: Command, aliasName: string, canonical: string): void {
-  const origOutputHelp = cmd.outputHelp.bind(cmd);
-  const wrapped = (context?: HelpContext) => {
-    warnDeprecated(aliasName, canonical);
-    return origOutputHelp(context);
-  };
-  // Commander's outputHelp has overloads; cast to satisfy the assignment
-  cmd.outputHelp = wrapped as typeof cmd.outputHelp;
-}
+import { deprecate } from "./deprecation.js";
 
 function isDirectCliExecution(): boolean {
   return process.argv[1] != null
@@ -95,14 +79,11 @@ export function createProgram(): Command {
 
   const kpiCmd = program
     .command("kpi")
-    .description("DEPRECATED alias for `flaker analyze kpi` (removed in 0.7.0)")
+    .description("KPI dashboard (sampling effectiveness, flaky, data quality)")
     .option("--window-days <days>", "Analysis window in days", "30")
     .option("--json", "Output as JSON")
-    .action((opts) => {
-      warnDeprecated("kpi", "flaker analyze kpi");
-      return analyzeKpiAction(opts);
-    });
-  attachDeprecationWarning(kpiCmd, "kpi", "flaker analyze kpi");
+    .action(analyzeKpiAction);
+  deprecate(kpiCmd, { since: "0.7.0", remove: "0.8.0", canonical: "flaker analyze kpi" });
 
   program
     .command("status")
@@ -113,12 +94,9 @@ export function createProgram(): Command {
 
   const doctorCmd = program
     .command("doctor")
-    .description("DEPRECATED alias for `flaker debug doctor` (removed in 0.7.0)")
-    .action(() => {
-      warnDeprecated("doctor", "flaker debug doctor");
-      return debugDoctorAction();
-    });
-  attachDeprecationWarning(doctorCmd, "doctor", "flaker debug doctor");
+    .description("Check runtime requirements")
+    .action(debugDoctorAction);
+  deprecate(doctorCmd, { since: "0.7.0", remove: "0.8.0", canonical: "flaker debug doctor" });
 
   const originalHelpInformation = program.helpInformation.bind(program);
   program.helpInformation = () => {
