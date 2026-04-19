@@ -1,6 +1,6 @@
 import type { FlakerConfig } from "../../config.js";
 import type { FlakerKpi } from "../analyze/kpi.js";
-import { computeStateDiff, type DesiredState, type ObservedState, type StateDiffField } from "./state.js";
+import { computeStateDiff, type DesiredState, type ObservedState, type StateDiff, type StateDiffField } from "./state.js";
 
 export interface RepoProbe {
   hasGitRemote: boolean;
@@ -20,7 +20,12 @@ export interface PlannerInput {
   probe: RepoProbe;
 }
 
-export function planApply(input: PlannerInput): PlannedAction[] {
+export interface PlannerResult {
+  diff: StateDiff;
+  actions: PlannedAction[];
+}
+
+export function planApply(input: PlannerInput): PlannerResult {
   const actions: PlannedAction[] = [];
   const confidence = input.kpi.data.confidence;
   const hasUsefulHistory = confidence === "moderate" || confidence === "high";
@@ -116,5 +121,5 @@ export function planApply(input: PlannerInput): PlannedAction[] {
     });
   }
 
-  return actions;
+  return { diff, actions };
 }

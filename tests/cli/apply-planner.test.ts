@@ -21,7 +21,7 @@ function makeInput(overrides: Partial<PlannerInput> = {}): PlannerInput {
 
 describe("planApply", () => {
   it("Path 1 (no history): collect, cold_start_run, no calibrate", () => {
-    const actions = planApply(makeInput());
+    const { actions } = planApply(makeInput());
     const kinds = actions.map((a) => a.kind);
     expect(kinds).toContain("collect_ci");
     expect(kinds).not.toContain("calibrate");
@@ -29,7 +29,7 @@ describe("planApply", () => {
   });
 
   it("Path 2 (moderate confidence): calibrate and quarantine_apply included", () => {
-    const actions = planApply(makeInput({
+    const { actions } = planApply(makeInput({
       kpi: {
         windowDays: 30,
         sampling: { matchedCommits: 25 } as any,
@@ -46,7 +46,7 @@ describe("planApply", () => {
   });
 
   it("Path 2 (high confidence): calibrate and quarantine_apply included, every action has reason", () => {
-    const actions = planApply(makeInput({
+    const { actions } = planApply(makeInput({
       kpi: {
         windowDays: 30,
         sampling: { matchedCommits: 25 } as any,
@@ -67,7 +67,7 @@ describe("planApply", () => {
   });
 
   it("skips collect_ci when GITHUB_TOKEN missing", () => {
-    const actions = planApply(makeInput({
+    const { actions } = planApply(makeInput({
       probe: { hasGitRemote: true, hasGithubToken: false, hasLocalHistory: false },
     }));
     expect(actions.find((a) => a.kind === "collect_ci")).toBeUndefined();
@@ -83,19 +83,19 @@ describe("planApply", () => {
       } as any,
     });
     (input.config as any).quarantine.auto = false;
-    const actions = planApply(input);
+    const { actions } = planApply(input);
     expect(actions.find((a) => a.kind === "quarantine_apply")).toBeUndefined();
   });
 
   it("each action carries a non-empty reason", () => {
-    const actions = planApply(makeInput());
+    const { actions } = planApply(makeInput());
     for (const a of actions) {
       expect(a.reason.length).toBeGreaterThan(0);
     }
   });
 
   it("each action carries a driftRef naming the field(s) it addresses", () => {
-    const actions = planApply(makeInput());
+    const { actions } = planApply(makeInput());
     const collect = actions.find((a) => a.kind === "collect_ci");
     expect(collect?.driftRef).toBeDefined();
     // Path 1 (history staleDays null → collect_ci addresses local_history_missing or history_stale)
@@ -107,7 +107,7 @@ describe("planApply", () => {
   });
 
   it("calibrate in Path 2 addresses matched_commits / data_confidence drifts", () => {
-    const actions = planApply(makeInput({
+    const { actions } = planApply(makeInput({
       kpi: {
         windowDays: 30,
         sampling: { matchedCommits: 25 } as any,
