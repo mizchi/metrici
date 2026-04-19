@@ -53,10 +53,7 @@ describe("flaker --help top-level shape (Task 11)", () => {
     expect(stdout).toContain("report");
   });
 
-  it("mentions gate review under Advanced", () => {
-    const advancedSection = stdout.split(/Advanced:/i)[1] ?? "";
-    expect(advancedSection).toContain("gate");
-  });
+  // gate review removed in 0.8.0 — assertion deleted.
 
   it("mentions ops under Advanced", () => {
     const advancedSection = stdout.split(/Advanced:/i)[1] ?? "";

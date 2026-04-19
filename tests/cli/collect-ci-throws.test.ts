@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runCollectCi } from "../../src/cli/categories/collect.js";
+import { runCollectCi } from "../../src/cli/commands/collect/ci.js";
 
 describe("runCollectCi (throwing variant)", () => {
   it("throws when GITHUB_TOKEN is missing (does not call process.exit)", async () => {

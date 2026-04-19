@@ -22,13 +22,7 @@ describe("CLI help", () => {
     const execCmd = program.commands.find((command) => command.name() === "exec");
     const runCmd = execCmd?.commands.find((command) => command.name() === "run");
     const runHelp = runCmd?.helpInformation();
-    const gateCmd = program.commands.find((command) => command.name() === "gate");
-    const gateReviewHelp = gateCmd?.commands.find((command) => command.name() === "review")?.helpInformation();
-    const gateExplainHelp = gateCmd?.commands.find((command) => command.name() === "explain")?.helpInformation();
-    const gateHistoryHelp = gateCmd?.commands.find((command) => command.name() === "history")?.helpInformation();
-    const quarantineCmd = program.commands.find((command) => command.name() === "quarantine");
-    const quarantineSuggestHelp = quarantineCmd?.commands.find((command) => command.name() === "suggest")?.helpInformation();
-    const quarantineApplyHelp = quarantineCmd?.commands.find((command) => command.name() === "apply")?.helpInformation();
+    // gate/quarantine commands removed in 0.8.0 — lookups deleted.
     const opsCmd = program.commands.find((command) => command.name() === "ops");
     const opsDailyHelp = opsCmd?.commands.find((command) => command.name() === "daily")?.helpInformation();
     const opsIncidentHelp = opsCmd?.commands.find((command) => command.name() === "incident")?.helpInformation();
@@ -42,14 +36,8 @@ describe("CLI help", () => {
     expect(runHelp).toContain("--gate");
     expect(runHelp).toContain("--cluster-mode");
     expect(runHelp).toContain("--skip-flaky-tagged");
-    expect(gateReviewHelp).toContain("--window-days");
-    expect(gateReviewHelp).toContain("--json");
-    expect(gateExplainHelp).toContain("--json");
-    expect(gateHistoryHelp).toContain("--window-days");
-    expect(quarantineSuggestHelp).toContain("--window-days");
-    expect(quarantineSuggestHelp).toContain("--output");
-    expect(quarantineApplyHelp).toContain("--from");
-    expect(quarantineApplyHelp).toContain("--create-issues");
+    // gateReviewHelp, gateExplainHelp, gateHistoryHelp assertions removed — gate dropped in 0.8.0.
+    // quarantineSuggestHelp, quarantineApplyHelp assertions removed — quarantine dropped in 0.8.0.
     expect(opsDailyHelp).toContain("--window-days");
     expect(opsDailyHelp).toContain("--json");
     expect(opsIncidentHelp).toContain("--suite");

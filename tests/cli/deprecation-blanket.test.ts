@@ -23,36 +23,9 @@ const cases: Array<{ cmd: string[]; canonical: string }> = [
   { cmd: ["exec", "run"], canonical: "flaker run" },
   // exec affected → flaker run --gate iteration --changed <paths>
   { cmd: ["exec", "affected"], canonical: "flaker run" },
-  // collect (bare) → flaker apply
-  { cmd: ["collect"], canonical: "flaker apply" },
-  // collect ci → flaker apply
-  { cmd: ["collect", "ci"], canonical: "flaker apply" },
-  // collect local → flaker apply
-  { cmd: ["collect", "local"], canonical: "flaker apply" },
-  // collect coverage → flaker apply
-  { cmd: ["collect", "coverage"], canonical: "flaker apply" },
-  // collect commit-changes → flaker apply
-  { cmd: ["collect", "commit-changes"], canonical: "flaker apply" },
-  // collect calibrate → flaker apply
-  { cmd: ["collect", "calibrate"], canonical: "flaker apply" },
-  // quarantine suggest → flaker apply
-  { cmd: ["quarantine", "suggest"], canonical: "flaker apply" },
-  // quarantine apply → flaker apply
-  { cmd: ["quarantine", "apply"], canonical: "flaker apply" },
-  // policy quarantine → flaker apply
-  { cmd: ["policy", "quarantine"], canonical: "flaker apply" },
-  // policy check → flaker apply
-  { cmd: ["policy", "check"], canonical: "flaker apply" },
-  // policy quarantine report → flaker apply
-  { cmd: ["policy", "quarantine", "report"], canonical: "flaker apply" },
-  // gate review → flaker status --gate <name> --detail
-  { cmd: ["gate", "review"], canonical: "flaker status" },
-  // gate history → flaker status --gate <name>
-  { cmd: ["gate", "history"], canonical: "flaker status" },
-  // gate explain → flaker status --gate <name> --detail
-  { cmd: ["gate", "explain"], canonical: "flaker status" },
   // debug doctor → flaker doctor
   { cmd: ["debug", "doctor"], canonical: "flaker doctor" },
+  // collect/quarantine/policy/gate cases removed in 0.8.0 — commands no longer registered
 ];
 
 describe("deprecation-blanket: deprecated commands emit warning on --help", () => {

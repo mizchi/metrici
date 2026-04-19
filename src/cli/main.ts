@@ -4,16 +4,12 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { registerSetupCommands, setupInitAction } from "./categories/setup.js";
 import { registerExecCommands, execRunAction, RUN_COMMAND_HELP } from "./categories/exec.js";
-import { registerCollectCommands } from "./categories/collect.js";
 import { registerImportCommands } from "./categories/import.js";
 import { registerReportCommands } from "./categories/report.js";
 import { analyzeKpiAction, statusAction, analyzeQueryAction } from "./categories/analyze.js";
 import { registerExplainCommands } from "./categories/explain.js";
-import { registerGateCommands } from "./categories/gate.js";
 import { registerOpsCommands } from "./categories/ops.js";
-import { registerQuarantineCommands } from "./categories/quarantine.js";
 import { registerDebugCommands, debugDoctorAction } from "./categories/debug.js";
-import { registerPolicyCommands } from "./categories/policy.js";
 import { registerDevCommands } from "./categories/dev.js";
 import { registerApplyCommands } from "./categories/apply.js";
 import { deprecate } from "./deprecation.js";
@@ -28,16 +24,12 @@ export function createProgram(): Command {
   registerSetupCommands(program);
   registerApplyCommands(program);
   registerExecCommands(program);
-  registerCollectCommands(program);
   registerImportCommands(program);
   registerReportCommands(program);
-  registerGateCommands(program);
   registerOpsCommands(program);
-  registerQuarantineCommands(program);
   // registerAnalyzeCommands: all analyze subcommands removed in 0.8.0; parent dropped.
   registerExplainCommands(program);
   registerDebugCommands(program);
-  registerPolicyCommands(program);
   registerDevCommands(program);
 
   program
@@ -133,7 +125,6 @@ Primary commands:
   report <file> --summary|--diff|--aggregate    Local report shaping
 
 Advanced:
-  gate review <name>                Authoritative promotion metrics (--json)
   ops daily|weekly|incident         Cadence artifact bundles
   analyze query                     (legacy — use \`flaker query\`)
   dev <train|tune|self-eval|...>    Maintainer tools
