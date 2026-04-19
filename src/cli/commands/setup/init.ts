@@ -39,7 +39,13 @@ ${runnerSection(runner)}
 # trust = true
 
 [affected]
-resolver = "git"
+# Resolver options:
+#   "simple"    — directory-name matching (default, single-package or fallback)
+#   "workspace" — pnpm/npm/yarn workspaces (monorepo)
+#   "glob"      — glob rules in flaker.affected.toml (custom rules)
+#   "bitflow"   — Starlark-based dependency graph
+#   "moon"      — MoonBit moon.pkg imports
+resolver = "simple"
 config = ""
 
 [quarantine]
