@@ -30,7 +30,12 @@ jobs:
         uses: hustcer/setup-moonbit@v1
 
       - name: MoonBit deps
-        run: moon update
+        run: |
+          moon update
+          # Populate _build/js/debug/.../flaker.js so tests that import the
+          # moonbit bridge via build-artifact.ts's REPO_BRIDGE_CANDIDATES
+          # succeed before `pnpm run build` has emitted dist/moonbit/flaker.js.
+          moon build --target js
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
