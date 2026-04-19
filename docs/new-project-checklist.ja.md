@@ -76,15 +76,20 @@ DuckDB が落ちる場合は `node --version` が 24 未満の可能性が高い
 
 ### 4. affected resolver を設定
 
-`flaker run --gate iteration` / `hybrid` strategy を活かすには resolver の設定が必要。プロジェクトの形に合わせて `flaker.toml` の `[affected]` セクションを編集:
+`flaker run --gate iteration` / `hybrid` strategy を活かすには resolver の設定が必要。`flaker init` の既定は `simple`。プロジェクトの形に合わせて `flaker.toml` の `[affected]` セクションを編集:
 
 ```toml
-# pnpm workspaces / npm workspaces を使っているモノレポ
+# 単一 package / フォールバック (init 既定。vitest / jest ライブラリでまずこれ)
+[affected]
+resolver = "simple"
+config = ""
+
+# pnpm / npm / yarn workspaces を使っているモノレポ
 [affected]
 resolver = "workspace"
 config = ""
 
-# glob ルール (`flaker.affected.toml` を別途作成)
+# glob ルールを手で書く (flaker.affected.toml を別途作成)
 [affected]
 resolver = "glob"
 config = "flaker.affected.toml"
@@ -92,10 +97,21 @@ config = "flaker.affected.toml"
 # bitflow を使っている場合
 [affected]
 resolver = "bitflow"
+config = "flaker.star"
+
+# MoonBit プロジェクト
+[affected]
+resolver = "moon"
 config = ""
 ```
 
-resolver を設定しないと `hybrid` は機能しないが、`weighted` / `random` フォールバックで動く。最初は workspace を試して、ハマったら次のレベルへ。
+resolver を設定しないと `hybrid` は `weighted` / `random` フォールバックで動くだけ。選択の目安:
+
+- 単一 package なら `simple` のまま
+- monorepo なら `workspace` (最も楽)
+- 細かい依存ルールが要るなら `glob`
+
+詳細表は [how-to-use.ja.md 依存分析の設定](how-to-use.ja.md#依存分析の設定) を参照。
 
 ### 5. `flaker plan` で差分を確認
 
