@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.8.0 (breaking)
+
+Removes the 17 commands deprecated in 0.7.0. Scripts and CI workflows still using any of the legacy forms below will now exit non-zero. Users on 0.7.x should first work through [docs/migration-0.6-to-0.7.md](docs/migration-0.6-to-0.7.md) before upgrading; the mapping is unchanged from the 0.7.0 deprecation cycle.
+
+### Removed
+
+| Removed | Use instead |
+|---|---|
+| `flaker setup init` | `flaker init` |
+| `flaker exec run` / `flaker exec affected` | `flaker run` / `flaker run --gate iteration --changed <paths>` |
+| `flaker collect` / `collect ci` / `collect local` / `collect coverage` / `collect commit-changes` / `collect calibrate` | `flaker apply` |
+| `flaker quarantine suggest` / `flaker quarantine apply` | `flaker apply` |
+| `flaker policy quarantine` / `flaker policy check` / `flaker policy report` | `flaker apply` |
+| `flaker gate review <name>` / `flaker gate history <name>` / `flaker gate explain <name>` | `flaker status --gate <name> [--detail] [--json]` |
+| `flaker analyze kpi` | `flaker status` |
+| `flaker analyze eval` | `flaker status --markdown` |
+| `flaker analyze flaky` | `flaker status --list flaky` |
+| `flaker analyze flaky-tag` | `flaker apply` |
+| `flaker analyze reason` / `insights` / `cluster` / `bundle` / `context` | `flaker explain <topic>` |
+| `flaker analyze query` | `flaker query <sql>` |
+| `flaker import report <file>` / `flaker import parquet <dir>` | `flaker import <file>` (adapter auto-detected) |
+| `flaker report summary` / `report diff` / `report aggregate` | `flaker report <file> --summary \| --diff <base> \| --aggregate <dir>` |
+| `flaker debug doctor` | `flaker doctor` |
+| `flaker kpi` (top-level alias) | `flaker status` (or `flaker analyze kpi`, itself removed → also `flaker status`) |
+
+### Other changes
+
+- Help output no longer has a "Deprecated" section. Primary + Advanced only.
+- Internal `src/cli/deprecation.ts` helper removed (no remaining in-tree consumers).
+- Registration-only category files removed: `src/cli/categories/{setup,exec,collect,quarantine,policy,gate}.ts`. The underlying action functions in `src/cli/commands/**` are retained because they back `flaker apply`, `flaker status`, `flaker explain`, etc.
+- `execRunAction` and `RUN_COMMAND_HELP` moved from `src/cli/categories/exec.ts` to `src/cli/commands/run.ts`.
+- `setupInitAction` kept in `src/cli/commands/setup/init.ts`.
+
+### Migration
+
+Mapping identical to 0.7.0. See [docs/migration-0.6-to-0.7.md](docs/migration-0.6-to-0.7.md) and the grep checklist in that doc — deferred migration now fails at runtime rather than emitting a warning.
+
 ## 0.7.1
 
 Runner-agnostic docs fix. Resolves the Vitest/Jest overfit issue surfaced by the Iter 6.5 hold-out evaluation (closes #53).

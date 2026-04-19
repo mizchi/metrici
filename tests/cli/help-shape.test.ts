@@ -21,21 +21,16 @@ describe("flaker --help", () => {
     expect(top).toContain("Advanced:");
   });
 
-  it("contains Deprecated section", () => {
-    expect(top).toContain("Deprecated (removed in 0.8.0):");
+  it("no longer contains Deprecated section (removed in 0.8.0)", () => {
+    expect(top).not.toContain("Deprecated (removed in 0.8.0):");
   });
 
-  for (const category of ["setup", "exec", "collect", "import", "report", "analyze", "debug", "policy", "dev"]) {
+  // setup, exec, collect, policy categories removed in 0.8.0 — checks dropped.
+  for (const category of ["import", "report", "analyze", "debug", "dev"]) {
     it(`lists ${category} category`, () => {
       expect(top).toContain(category);
     });
   }
 });
 
-describe("analyze query --help", () => {
-  it("includes SQL examples", () => {
-    const out = help("analyze query");
-    expect(out).toContain("Examples:");
-    expect(out).toMatch(/SELECT.*test_results/);
-  });
-});
+// `flaker analyze query` was removed in 0.8.0; help-shape test for it is deleted.

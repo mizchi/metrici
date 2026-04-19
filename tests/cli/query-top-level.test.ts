@@ -13,10 +13,9 @@ describe("flaker query", () => {
     expect(res.stdout).toMatch(/sql/i);
   });
 
-  it("`flaker analyze query --help` emits the deprecation warning", () => {
-    const res = spawnSync("node", [CLI, "analyze", "query", "--help"], { encoding: "utf8" });
-    expect(res.status).toBe(0);
-    expect(res.stderr).toContain("deprecated");
-    expect(res.stderr).toContain("flaker query");
+  it("`flaker analyze query` is no longer a valid command (removed in 0.8.0)", () => {
+    // Note: --help is omitted; Commander intercepts it before unknown-command detection.
+    const res = spawnSync("node", [CLI, "analyze", "query"], { encoding: "utf8" });
+    expect(res.status).not.toBe(0);
   });
 });

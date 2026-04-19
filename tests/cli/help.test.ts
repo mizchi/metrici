@@ -17,42 +17,26 @@ describe("CLI help", () => {
     expect(help).toContain("Advanced:");
   });
 
-  it("shows exec run help with --dry-run and --explain flags", () => {
+  it("shows run help with --dry-run and --explain flags", () => {
     const program = createProgram();
-    const execCmd = program.commands.find((command) => command.name() === "exec");
-    const runCmd = execCmd?.commands.find((command) => command.name() === "run");
+    // exec category removed in 0.8.0 — use top-level run command.
+    const runCmd = program.commands.find((command) => command.name() === "run");
     const runHelp = runCmd?.helpInformation();
-    const gateCmd = program.commands.find((command) => command.name() === "gate");
-    const gateReviewHelp = gateCmd?.commands.find((command) => command.name() === "review")?.helpInformation();
-    const gateExplainHelp = gateCmd?.commands.find((command) => command.name() === "explain")?.helpInformation();
-    const gateHistoryHelp = gateCmd?.commands.find((command) => command.name() === "history")?.helpInformation();
-    const quarantineCmd = program.commands.find((command) => command.name() === "quarantine");
-    const quarantineSuggestHelp = quarantineCmd?.commands.find((command) => command.name() === "suggest")?.helpInformation();
-    const quarantineApplyHelp = quarantineCmd?.commands.find((command) => command.name() === "apply")?.helpInformation();
+    // gate/quarantine commands removed in 0.8.0 — lookups deleted.
     const opsCmd = program.commands.find((command) => command.name() === "ops");
     const opsDailyHelp = opsCmd?.commands.find((command) => command.name() === "daily")?.helpInformation();
     const opsIncidentHelp = opsCmd?.commands.find((command) => command.name() === "incident")?.helpInformation();
     const opsWeeklyHelp = opsCmd?.commands.find((command) => command.name() === "weekly")?.helpInformation();
-    const analyzeCmd = program.commands.find((command) => command.name() === "analyze");
-    const evalHelp = analyzeCmd?.commands.find((command) => command.name() === "eval")?.helpInformation();
-    const bundleHelp = analyzeCmd?.commands.find((command) => command.name() === "bundle")?.helpInformation();
-    const flakyTagHelp = analyzeCmd?.commands.find((command) => command.name() === "flaky-tag")?.helpInformation();
-    const importCmd = program.commands.find((command) => command.name() === "import");
-    const importReportHelp = importCmd?.commands.find((command) => command.name() === "report")?.helpInformation();
+    // analyze subcommands (eval, bundle, flaky-tag) removed in 0.8.0 — lookups deleted.
+    // import report subcommand removed in 0.8.0 — use top-level import <file>.
 
     expect(runHelp).toContain("--dry-run");
     expect(runHelp).toContain("--explain");
     expect(runHelp).toContain("--gate");
     expect(runHelp).toContain("--cluster-mode");
     expect(runHelp).toContain("--skip-flaky-tagged");
-    expect(gateReviewHelp).toContain("--window-days");
-    expect(gateReviewHelp).toContain("--json");
-    expect(gateExplainHelp).toContain("--json");
-    expect(gateHistoryHelp).toContain("--window-days");
-    expect(quarantineSuggestHelp).toContain("--window-days");
-    expect(quarantineSuggestHelp).toContain("--output");
-    expect(quarantineApplyHelp).toContain("--from");
-    expect(quarantineApplyHelp).toContain("--create-issues");
+    // gateReviewHelp, gateExplainHelp, gateHistoryHelp assertions removed — gate dropped in 0.8.0.
+    // quarantineSuggestHelp, quarantineApplyHelp assertions removed — quarantine dropped in 0.8.0.
     expect(opsDailyHelp).toContain("--window-days");
     expect(opsDailyHelp).toContain("--json");
     expect(opsIncidentHelp).toContain("--suite");
@@ -60,10 +44,7 @@ describe("CLI help", () => {
     expect(opsIncidentHelp).toContain("--run");
     expect(opsWeeklyHelp).toContain("--window-days");
     expect(opsWeeklyHelp).toContain("--json");
-    expect(evalHelp).toContain("Measure whether local sampled runs predict CI");
-    expect(bundleHelp).toContain("AI consumers");
-    expect(bundleHelp).toContain("--window-days");
-    expect(flakyTagHelp).toContain("--remove-after-passes");
-    expect(importReportHelp).toContain("--source");
+    // evalHelp, bundleHelp, flakyTagHelp assertions removed — commands dropped in 0.8.0.
+    // importReportHelp assertion removed — import report subcommand dropped in 0.8.0.
   });
 });

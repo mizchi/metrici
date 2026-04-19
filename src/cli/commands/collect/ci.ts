@@ -1,12 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import AdmZip from "adm-zip";
+import { Octokit } from "@octokit/rest";
 import { createTestResultAdapter } from "../../adapters/index.js";
 import type { TestResultAdapter } from "../../adapters/types.js";
 import type { MetricStore, WorkflowRun, TestResult } from "../../storage/types.js";
 import { toStoredTestResult } from "../../storage/test-result-mapper.js";
 import { collectCommitChanges } from "./commit-changes.js";
 import { exportRunParquet } from "../export-parquet.js";
+import type { FlakerConfig } from "../../config.js";
 
 export interface GitHubClient {
   listWorkflowRuns(): Promise<{
@@ -334,4 +336,105 @@ export async function collectWorkflowRuns(
     failedRunIds,
     failures,
   };
+}
+
+export interface RunCollectCiOpts {
+  store: MetricStore;
+  config: FlakerConfig;
+  cwd: string;
+  days: number;
+  branch?: string;
+  failOnErrors?: boolean;
+}
+
+export interface RunCollectCiResult {
+  result: CollectResult;
+  exitCode: number;
+}
+
+/**
+ * Core collect-ci logic that throws on fatal errors (e.g. missing GITHUB_TOKEN)
+ * instead of calling process.exit. Suitable for use by applyAction and other
+ * programmatic callers that need clean error propagation.
+ */
+export async function runCollectCi(opts: RunCollectCiOpts): Promise<RunCollectCiResult> {
+  const { store, config, cwd: _cwd, days, branch, failOnErrors } = opts;
+
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error("GITHUB_TOKEN environment variable is required");
+  }
+
+  const octokit = new Octokit({ auth: token });
+  const owner = config.repo.owner;
+  const repo = config.repo.name;
+
+  const github: GitHubClient = {
+    async listWorkflowRuns() {
+      const created = new Date();
+      created.setDate(created.getDate() - days);
+      const response = await octokit.actions.listWorkflowRunsForRepo({
+        owner,
+        repo,
+        ...(branch ? { branch } : {}),
+        created: `>=${created.toISOString().split("T")[0]}`,
+        per_page: 100,
+      });
+      return {
+        total_count: response.data.total_count,
+        workflow_runs: response.data.workflow_runs.map((run) => ({
+          id: run.id,
+          path: (run as { path?: string }).path,
+          status: run.status ?? undefined,
+          head_branch: run.head_branch ?? "",
+          head_sha: run.head_sha,
+          event: run.event,
+          conclusion: run.conclusion ?? "unknown",
+          created_at: run.created_at,
+          run_started_at: run.run_started_at ?? run.created_at,
+          updated_at: run.updated_at,
+        })),
+      };
+    },
+    async listArtifacts(runId: number) {
+      const response = await octokit.actions.listWorkflowRunArtifacts({
+        owner,
+        repo,
+        run_id: runId,
+      });
+      return response.data;
+    },
+    async downloadArtifact(artifactId: number) {
+      const response = await octokit.actions.downloadArtifact({
+        owner,
+        repo,
+        artifact_id: artifactId,
+        archive_format: "zip",
+      });
+      return Buffer.from(response.data as ArrayBuffer);
+    },
+    async getCommitFiles(o: string, r: string, sha: string) {
+      const response = await octokit.repos.getCommit({ owner: o, repo: r, ref: sha });
+      return (response.data.files ?? []).map((f) => ({
+        filename: f.filename,
+        status: f.status ?? "modified",
+        additions: f.additions ?? 0,
+        deletions: f.deletions ?? 0,
+      }));
+    },
+  };
+
+  const result = await collectWorkflowRuns({
+    store,
+    github,
+    repo: `${owner}/${repo}`,
+    adapterType: config.adapter.type,
+    artifactName: config.adapter.artifact_name,
+    customCommand: config.adapter.command,
+    storagePath: config.storage.path,
+    workflowPaths: config.collect?.workflow_paths,
+  });
+
+  const exitCode = resolveCollectExitCode(result, { failOnErrors });
+  return { result, exitCode };
 }

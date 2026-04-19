@@ -2,21 +2,16 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { registerSetupCommands, setupInitAction } from "./categories/setup.js";
-import { registerExecCommands, execRunAction, RUN_COMMAND_HELP } from "./categories/exec.js";
-import { registerCollectCommands } from "./categories/collect.js";
+import { setupInitAction } from "./commands/setup/init.js";
+import { execRunAction, RUN_COMMAND_HELP } from "./commands/run.js";
 import { registerImportCommands } from "./categories/import.js";
 import { registerReportCommands } from "./categories/report.js";
-import { registerAnalyzeCommands, analyzeKpiAction, statusAction, analyzeQueryAction } from "./categories/analyze.js";
+import { statusAction, analyzeQueryAction } from "./categories/analyze.js";
 import { registerExplainCommands } from "./categories/explain.js";
-import { registerGateCommands } from "./categories/gate.js";
 import { registerOpsCommands } from "./categories/ops.js";
-import { registerQuarantineCommands } from "./categories/quarantine.js";
 import { registerDebugCommands, debugDoctorAction } from "./categories/debug.js";
-import { registerPolicyCommands } from "./categories/policy.js";
 import { registerDevCommands } from "./categories/dev.js";
 import { registerApplyCommands } from "./categories/apply.js";
-import { deprecate } from "./deprecation.js";
 
 function isDirectCliExecution(): boolean {
   return process.argv[1] != null
@@ -25,25 +20,19 @@ function isDirectCliExecution(): boolean {
 
 export function createProgram(): Command {
   const program = new Command();
-  registerSetupCommands(program);
   registerApplyCommands(program);
-  registerExecCommands(program);
-  registerCollectCommands(program);
   registerImportCommands(program);
   registerReportCommands(program);
-  registerGateCommands(program);
   registerOpsCommands(program);
-  registerQuarantineCommands(program);
-  registerAnalyzeCommands(program);
+  // registerAnalyzeCommands: all analyze subcommands removed in 0.8.0; parent dropped.
   registerExplainCommands(program);
   registerDebugCommands(program);
-  registerPolicyCommands(program);
   registerDevCommands(program);
 
   program
     .name("flaker")
     .description("Intelligent test selection — run fewer tests, catch more failures")
-    .version("0.7.1")
+    .version("0.8.0")
     .showHelpAfterError()
     .showSuggestionAfterError();
 
@@ -78,14 +67,6 @@ export function createProgram(): Command {
     .option("--explain", "Print per-test selection tier, score, and reason")
     .addHelpText("after", RUN_COMMAND_HELP)
     .action(execRunAction);
-
-  const kpiCmd = program
-    .command("kpi")
-    .description("KPI dashboard (sampling effectiveness, flaky, data quality)")
-    .option("--window-days <days>", "Analysis window in days", "30")
-    .option("--json", "Output as JSON")
-    .action(analyzeKpiAction);
-  deprecate(kpiCmd, { since: "0.7.0", remove: "0.8.0", canonical: "flaker analyze kpi" });
 
   program
     .command("status")
@@ -133,27 +114,12 @@ Primary commands:
   report <file> --summary|--diff|--aggregate    Local report shaping
 
 Advanced:
-  gate review <name>                Authoritative promotion metrics (--json)
   ops daily|weekly|incident         Cadence artifact bundles
-  analyze query                     (legacy — use \`flaker query\`)
   dev <train|tune|self-eval|...>    Maintainer tools
 
-Deprecated (removed in 0.8.0):
-  setup init                        → flaker init
-  exec run / exec affected          → flaker run
-  collect ci|local|coverage|calibrate → flaker apply
-  quarantine suggest|apply          → flaker apply
-  policy quarantine|check|report    → flaker apply
-  analyze kpi|eval|flaky|flaky-tag  → flaker status (see --list, --markdown)
-  analyze reason|insights|cluster|bundle|context → flaker explain <topic>
-  analyze query                     → flaker query
-  import report|parquet             → flaker import <file>
-  report summary|diff|aggregate     → flaker report <file> --summary|--diff|--aggregate
-  debug doctor                      → flaker doctor
-  gate review|history|explain       → flaker status --gate <name> [--detail]
-  kpi                               → flaker analyze kpi (also deprecated)
-
 Run \`flaker <command> --help\` for details.
+If you used legacy forms (collect*, analyze*, gate*, etc.) removed in
+0.8.0, see docs/migration-0.6-to-0.7.md for the canonical replacements.
 `;
     return base + extras;
   };

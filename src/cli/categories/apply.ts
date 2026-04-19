@@ -6,7 +6,7 @@ import { DuckDBStore } from "../storage/duckdb.js";
 import { computeKpi } from "../commands/analyze/kpi.js";
 import { planApply, type PlannedAction } from "../commands/apply/planner.js";
 import { probeRepo } from "../commands/apply/probe.js";
-import { runCollectCi } from "./collect.js";
+import { runCollectCi } from "../commands/collect/ci.js";
 import { runQuarantineSuggest } from "../commands/quarantine/suggest.js";
 import { runQuarantineApply } from "../commands/quarantine/apply.js";
 import { prepareRunRequest } from "../commands/exec/prepare-run-request.js";

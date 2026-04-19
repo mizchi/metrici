@@ -25,11 +25,7 @@ describe("top-level aliases", () => {
     expect(help).toContain("release");
   });
 
-  it("flaker kpi --help shows analyze kpi options", () => {
-    const help = execSync(`node ${cliPath} kpi --help`, { encoding: "utf-8" });
-    expect(help).toContain("--window-days");
-    expect(help).toContain("--json");
-  });
+  // flaker kpi removed in 0.8.0 — test deleted.
 
   it("flaker status --help shows user-facing status options", () => {
     const help = execSync(`node ${cliPath} status --help`, { encoding: "utf-8" });
@@ -37,35 +33,8 @@ describe("top-level aliases", () => {
     expect(help).toContain("--json");
   });
 
-  it("flaker gate review --help shows gate review options", () => {
-    const help = execSync(`node ${cliPath} gate review --help`, { encoding: "utf-8" });
-    expect(help).toContain("--window-days");
-    expect(help).toContain("--json");
-  });
-
-  it("flaker gate explain --help shows gate explain options", () => {
-    const help = execSync(`node ${cliPath} gate explain --help`, { encoding: "utf-8" });
-    expect(help).toContain("--json");
-  });
-
-  it("flaker gate history --help shows gate history options", () => {
-    const help = execSync(`node ${cliPath} gate history --help`, { encoding: "utf-8" });
-    expect(help).toContain("--window-days");
-    expect(help).toContain("--json");
-  });
-
-  it("flaker quarantine suggest --help shows quarantine suggest options", () => {
-    const help = execSync(`node ${cliPath} quarantine suggest --help`, { encoding: "utf-8" });
-    expect(help).toContain("--window-days");
-    expect(help).toContain("--output");
-    expect(help).toContain("--json");
-  });
-
-  it("flaker quarantine apply --help shows quarantine apply options", () => {
-    const help = execSync(`node ${cliPath} quarantine apply --help`, { encoding: "utf-8" });
-    expect(help).toContain("--from");
-    expect(help).toContain("--create-issues");
-  });
+  // gate review/explain/history removed in 0.8.0 — tests deleted.
+  // quarantine suggest/apply removed in 0.8.0 — tests deleted.
 
   it("flaker ops weekly --help shows ops weekly options", () => {
     const help = execSync(`node ${cliPath} ops weekly --help`, { encoding: "utf-8" });
@@ -92,11 +61,5 @@ describe("top-level aliases", () => {
     expect(help).not.toContain("DEPRECATED");
   });
 
-  it("flaker collect --help shows collect subcommands and ci options", () => {
-    const help = execSync(`node ${cliPath} collect --help`, { encoding: "utf-8" });
-    expect(help).toContain("--days");
-    expect(help).toContain("ci");
-    expect(help).toContain("local");
-    expect(help).toContain("calibrate");
-  });
+  // collect CLI form removed in 0.8.0 — test deleted.
 });

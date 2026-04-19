@@ -108,7 +108,6 @@ describe("packaged CLI cold start", () => {
     expect(existsSync(join(dir, ".flaker", "data.duckdb"))).toBe(true);
 
     const queryOutput = runCli([
-      "analyze",
       "query",
       "SELECT COUNT(*)::INTEGER AS cnt FROM test_results",
     ]);
