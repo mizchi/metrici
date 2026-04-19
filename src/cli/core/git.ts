@@ -38,7 +38,7 @@ export function resolveCommitChanges(cwd: string, commitSha: string): CommitChan
   try {
     const result = spawnSync(
       "git",
-      ["diff-tree", "--no-commit-id", "--name-status", "-r", commitSha],
+      ["diff-tree", "-m", "--first-parent", "--no-commit-id", "--name-status", "-r", commitSha],
       { cwd, stdio: ["ignore", "pipe", "ignore"] },
     );
     if (result.status !== 0) return null;

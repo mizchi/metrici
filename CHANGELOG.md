@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.6
+
+Bug fix: `resolveCommitChanges` now returns the changed files for merge commits.
+
+### Fixed
+
+- `src/cli/core/git.ts`: `resolveCommitChanges` invokes `git diff-tree -m --first-parent --no-commit-id --name-status -r <sha>` instead of omitting `-m --first-parent`. Previously, calling it with a merge commit's SHA (common after GitHub "Merge pull request" lands) returned an empty array, making `collectCommitChanges` appear to succeed with 0 files. `publish.yml` was failing because `tests/commands/collect-commit-changes.test.ts` and `tests/core/git-diff-tree.test.ts` run against the CI HEAD, which for tag-triggered builds is the merge commit. `--first-parent` keeps non-merge commits behaving identically.
+
 ## 0.10.5
 
 Rebrand cleanup. Resolves the three deferred items from 0.10.4.
