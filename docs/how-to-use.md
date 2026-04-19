@@ -195,31 +195,27 @@ flaker collect local --last 10    # Last 10 runs only
 
 Imports results from [actrun](https://github.com/mizchi/actrun) (GitHub Actions-compatible local runner). Automatically detects and parses Playwright/JUnit reports in artifact directories.
 
-### `flaker analyze flaky` — Detect Flaky Tests
+### Flaky test listing — `flaker status --list flaky`
+
+`flaker analyze flaky` was removed in 0.8.0. Flaky test listing is now part of `flaker status`:
 
 ```bash
-flaker analyze flaky                      # Top flaky tests
-flaker analyze flaky --top 50             # Top 50
-flaker analyze flaky --test "login"       # Filter by name
-flaker analyze flaky --true-flaky         # DeFlaker mode: same commit, inconsistent results
-flaker analyze flaky --trend --test "should redirect"  # Weekly trend
-flaker analyze flaky --by-variant         # Per OS/browser breakdown
+flaker status --list flaky                 # Top flaky tests
+flaker status --list flaky --json          # Machine-readable
 ```
 
-#### Detection Modes
+For advanced filtering (by variant, trend, true-flaky), use `flaker query "SELECT ..."` directly or delegate to `flaker explain insights` for AI-assisted analysis.
 
-| Mode | Flag | Method |
-|------|------|--------|
-| Threshold | (default) | Failure rate exceeds threshold in rolling window |
-| True flaky | `--true-flaky` | Same commit_sha has both pass and fail (DeFlaker method) |
-| By variant | `--by-variant` | Flaky rate per execution environment (OS, browser, etc.) |
+### `flaker explain <topic>` — AI-assisted analysis
 
-### `flaker analyze reason` — AI-Powered Analysis
+The former `flaker analyze reason/insights/cluster/bundle/context` commands were unified under the `flaker explain <topic>` umbrella in 0.8.0.
+
+#### `explain reason` — flaky classification and recommended actions
 
 ```bash
-flaker analyze reason                     # Report with recommended actions
-flaker analyze reason --json              # Machine-readable JSON
-flaker analyze reason --window 7          # Analyze last 7 days
+flaker explain reason                     # Classification + recommendations report
+flaker explain reason --json              # Machine-readable JSON
+flaker explain reason --window-days 7     # Analyze last 7 days
 ```
 
 Classifies each flaky test and recommends actions:
@@ -237,6 +233,42 @@ Pattern detection:
 
 Risk prediction:
 - Currently stable tests showing early warning signs (recent failures, high duration variance)
+
+#### `explain insights` — adaptive insights from sampling KPIs
+
+```bash
+flaker explain insights
+flaker explain insights --json
+```
+
+Surfaces threshold-adjustment candidates based on fluctuations in sampling effectiveness and false-negative rate.
+
+#### `explain cluster` — co-failure clusters
+
+Co-failure cluster detection. Full configuration details are in `[sampling].cluster_mode` (see [how-to-use.ja.md](how-to-use.ja.md) for the complete reference).
+
+```bash
+flaker explain cluster --min-co-rate 0.9
+flaker explain cluster --window-days 30 --top 50
+flaker explain cluster --json
+```
+
+#### `explain bundle` — bundle-level failure aggregation
+
+Summarises tests that fail together within the same bundle (suite prefix, etc.) to identify shared fixture or environment problems.
+
+```bash
+flaker explain bundle
+```
+
+#### `explain context` — failure context extraction
+
+Extracts error messages, stdout/stderr, and artifact paths from failing tests and clusters similar contexts.
+
+```bash
+flaker explain context
+flaker explain context --test "handles timeout"
+```
 
 ### `flaker run --dry-run` — Test Sampling (dry run)
 
@@ -340,25 +372,24 @@ flaker collect coverage --format playwright --input .artifacts/coverage
 
 Imports per-test coverage edges into DuckDB for `coverage-guided` sampling. Directory input is supported and duplicate edges are deduped before insertion.
 
-### `flaker dev train` — Train the GBDT Model
+(Maintainer-only commands are consolidated in the Advanced / Maintainer tools section below.)
 
-```bash
-flaker dev train
-flaker dev train --window-days 30 --num-trees 10 --learning-rate 0.3
+### Quarantine management — `flaker apply` + `[quarantine].auto`
+
+`flaker policy quarantine` was removed in 0.8.0. Quarantine is now managed declaratively:
+
+```toml
+[quarantine]
+auto = true                              # apply auto-isolates tests above threshold
+flaky_rate_threshold_percentage = 30
+min_runs = 10
 ```
 
-Builds `.flaker/models/gbdt.json` from accumulated CI and local history. The local rows are included with reduced weight, and the saved model includes the feature names used by `gbdt` sampling.
+`flaker apply` incorporates quarantine proposals and application (`QuarantineAction`).
 
-### `flaker policy quarantine` — Isolate Flaky Tests
-
-```bash
-flaker policy quarantine                                 # List quarantined
-flaker policy quarantine --auto                          # Auto-quarantine above threshold
-flaker policy quarantine --add "suite>testName"          # Manual add
-flaker policy quarantine --remove "suite>testName"       # Remove
-```
-
-Quarantined tests can be excluded from runs with `--skip-quarantined`.
+- List: `flaker status --list quarantined`
+- For manual overrides, edit `.flaker/quarantine-manifest.toml` directly and commit (apply respects an existing manifest)
+- Exclude from runs as before: `flaker run --skip-quarantined`
 
 ### `flaker debug bisect` — Find Culprit Commit
 
@@ -369,27 +400,25 @@ flaker debug bisect --test "should redirect" --suite "tests/login.spec.ts"
 
 Identifies the commit range where a test became flaky.
 
-### `flaker analyze eval` — Health Assessment
+### Health evaluation — `flaker status --markdown`
+
+`flaker analyze eval` was removed in 0.8.0. The equivalent output is now part of `flaker status`:
 
 ```bash
-flaker analyze eval
-flaker analyze eval --json
-flaker analyze eval --markdown --window 7
-flaker analyze eval --markdown --window 7 --output .artifacts/flaker-review.md
+flaker status --markdown                                           # Markdown summary for weekly review
+flaker status --markdown --output .artifacts/flaker-review.md     # Save to file
+flaker status --detail --markdown                                  # Include drift detail section
+flaker status --gate merge --detail --markdown                     # Merge-gate details only
 ```
 
-Rates overall test suite health on a 0-100 scale:
-- **Data Sufficiency** — Is there enough data?
-- **Detection** — Flaky test detection status
-- **Resolution** — Resolution tracking (MTTD/MTTR)
-- **Health Score** — Composite score
+The 0–100 Health Score, flaky count, matched commits, and correlation are all in `flaker status`. Use `--markdown` for weekly-review tables and `--json` for machine-readable output.
 
-Use `--markdown --window 7` to generate a weekly KPI summary that can be pasted directly into review notes.
+### `flaker query` — Direct SQL analysis
 
-### `flaker analyze query` — Direct SQL Analysis
+`flaker analyze query` was promoted to top-level `flaker query` in 0.7.0; the subcommand form was removed in 0.8.0.
 
 ```bash
-flaker analyze query "SELECT suite, test_name, status, COUNT(*) as cnt
+flaker query "SELECT suite, test_name, status, COUNT(*) as cnt
               FROM test_results
               GROUP BY suite, test_name, status
               ORDER BY cnt DESC
@@ -634,3 +663,18 @@ Rename the keys in your `flaker.toml` per the table below:
 The unit interpretation of `flaky_rate_threshold` also changed. Previously a bare `30.0` was treated as 30% and a bare `0.3` was silently auto-normalized. Now the value is taken literally as a percentage. If your old config had `flaky_rate_threshold = 0.3`, rename to `flaky_rate_threshold_percentage = 30`.
 
 Range validation is enforced by `flaker debug doctor` and `flaker policy check`: `*_ratio` must be in [0.0, 1.0]; `*_percentage` must be in [0, 100]; `*_days` / `*_seconds` / `*_count` must be non-negative integers.
+
+---
+
+## Advanced / Maintainer tools
+
+These commands are intended for flaker maintainers or advanced users tuning the ML model. Normal day-to-day usage does not require them.
+
+### `flaker dev train` — Train the GBDT Model
+
+```bash
+flaker dev train
+flaker dev train --window-days 30 --num-trees 10 --learning-rate 0.3
+```
+
+Builds `.flaker/models/gbdt.json` from accumulated CI and local history. The local rows are included with reduced weight, and the saved model includes the feature names used by `gbdt` sampling.
