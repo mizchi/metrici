@@ -9,6 +9,7 @@ import { registerImportCommands } from "./categories/import.js";
 import { registerReportCommands } from "./categories/report.js";
 import { registerAnalyzeCommands, analyzeKpiAction, statusAction } from "./categories/analyze.js";
 import { registerGateCommands } from "./categories/gate.js";
+import { registerOpsCommands } from "./categories/ops.js";
 import { registerQuarantineCommands } from "./categories/quarantine.js";
 import { registerDebugCommands, debugDoctorAction } from "./categories/debug.js";
 import { registerPolicyCommands } from "./categories/policy.js";
@@ -27,6 +28,7 @@ export function createProgram(): Command {
   registerImportCommands(program);
   registerReportCommands(program);
   registerGateCommands(program);
+  registerOpsCommands(program);
   registerQuarantineCommands(program);
   registerAnalyzeCommands(program);
   registerDebugCommands(program);
@@ -108,6 +110,7 @@ Primary commands:
   status      Show the user-facing health dashboard
   doctor      Check local runtime requirements
   gate        Review gate readiness and sampling health
+  ops         Generate operator review artifacts
   quarantine  Suggest quarantine add/remove plans
 
 Gate model:
@@ -120,6 +123,7 @@ Run \`flaker status --help\` or \`flaker doctor --help\` for user-facing command
 
 Management and advanced categories:
   gate       Gate review and readiness        (review)
+  ops        Operator cadence artifacts       (weekly)
   quarantine Read-only quarantine planning    (suggest)
   collect    Import history and calibration (ci, local, coverage, commit-changes, calibrate)
   import     Ingest external reports        (report, parquet)
