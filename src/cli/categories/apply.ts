@@ -4,7 +4,8 @@ import type { Command } from "commander";
 import { loadConfig, writeSamplingConfig } from "../config.js";
 import { DuckDBStore } from "../storage/duckdb.js";
 import { computeKpi } from "../commands/analyze/kpi.js";
-import { planApply, type PlannedAction, type RepoProbe } from "../commands/apply/planner.js";
+import { planApply, type PlannedAction } from "../commands/apply/planner.js";
+import { probeRepo } from "../commands/apply/probe.js";
 import { collectCiAction } from "./collect.js";
 import { runQuarantineSuggest } from "../commands/quarantine/suggest.js";
 import { runQuarantineApply } from "../commands/quarantine/apply.js";
@@ -28,14 +29,6 @@ function describeAction(action: PlannedAction): string {
   }
 }
 
-function probeRepo(cwd: string): RepoProbe {
-  return {
-    hasGitRemote: existsSync(resolve(cwd, ".git")),
-    hasGithubToken: Boolean(process.env.GITHUB_TOKEN),
-    hasLocalHistory: false,
-  };
-}
-
 export async function planAction(opts: { json?: boolean }): Promise<void> {
   const cwd = process.cwd();
   const config = loadConfig(cwd);
@@ -43,7 +36,7 @@ export async function planAction(opts: { json?: boolean }): Promise<void> {
   await store.initialize();
   try {
     const kpi = await computeKpi(store, { windowDays: 30 });
-    const probe = probeRepo(cwd);
+    const probe = await probeRepo({ cwd, store });
     const actions = planApply({ config, kpi, probe });
     if (opts.json) {
       console.log(JSON.stringify({ actions }, null, 2));
@@ -69,7 +62,7 @@ export async function applyAction(opts: { json?: boolean }): Promise<void> {
   await store.initialize();
   try {
     const kpi = await computeKpi(store, { windowDays: 30 });
-    const probe = probeRepo(cwd);
+    const probe = await probeRepo({ cwd, store });
     const actions = planApply({ config, kpi, probe });
 
     const deps: ExecutorDeps = {
