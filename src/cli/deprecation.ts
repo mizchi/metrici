@@ -34,10 +34,9 @@ export function deprecate(cmd: Command, opts: DeprecationOpts): Command {
   };
 
   const existing = (cmd as unknown as { _actionHandler?: (...args: unknown[]) => unknown })._actionHandler;
-  cmd.action(async (...args: unknown[]) => {
+  cmd.action(async (...args: unknown[]): Promise<void> => {
     warn();
-    if (existing) return existing(...args);
-    return undefined;
+    if (existing) await existing(...args);
   });
 
   const origOutputHelp = cmd.outputHelp.bind(cmd);
