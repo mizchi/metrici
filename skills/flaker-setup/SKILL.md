@@ -31,6 +31,55 @@ If both are unreachable, fall back to the procedure below.
 
 The old sequence (`init → collect → calibrate → run`) still works and is documented, but `apply` is the default entrypoint from 0.6.0 onward. Use raw commands only when debugging a specific step.
 
+### Minimal declarative `flaker.toml`
+
+```toml
+[repo]
+owner = "your-org"
+name = "your-repo"
+
+[adapter]
+type = "playwright"
+
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test"
+flaky_tag_pattern = "@flaky"
+
+[affected]
+resolver = "workspace"
+
+[quarantine]
+auto = false              # Day 1 recommended: keep false until history accumulates;
+                          # flip to true in Week 1-2 once `flaker status` drift shows moderate+ confidence.
+flaky_rate_threshold_percentage = 30
+min_runs = 10
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
+fallback_strategy = "weighted"
+skip_flaky_tagged = true
+
+[profile.ci]
+strategy = "hybrid"
+sample_percentage = 30
+adaptive = true
+skip_flaky_tagged = true
+
+[profile.scheduled]
+strategy = "full"
+
+# [promotion] is OPTIONAL — defaults (matched_commits_min=20, FNR<=5%, correlation>=95%,
+# holdout_fnr<=10%, data_confidence_min="moderate") apply when omitted.
+# Override only with explicit justification. Example:
+# [promotion]
+# matched_commits_min = 30
+# data_confidence_min = "high"
+```
+
+`flaker init` generates a starter toml; expect to edit `[affected].resolver` and the `[profile.*]` blocks before the first `flaker apply`.
+
 ## Decision points to confirm before touching files
 
 Ask the user (or infer from `package.json` / `pnpm-workspace.yaml` / repo layout) — do NOT guess silently:
@@ -45,13 +94,15 @@ Ask the user (or infer from `package.json` / `pnpm-workspace.yaml` / repo layout
 
 ```
 Day 0   prerequisites           5 min   node>=24, pnpm>=10, gh auth, git remote
-Day 1   install + init           10 min  pnpm add -D @mizchi/flaker → init → doctor
+Day 1   install + init          10 min  pnpm add -D @mizchi/flaker → init → doctor
 Day 1   first apply              5 min   flaker plan → flaker apply (handles history/no-history)
 Day 3   package.json scripts     5 min   flaker:plan, flaker:apply, flaker:status
-Day 5   Actions integration     15 min   cron calls `flaker apply` + PR advisory job
+Day 5   Actions integration     15 min  cron calls `flaker apply` + PR advisory job
 Week 1  daily observation        -      flaker status (drift section tells you when to promote)
 Week 2-4 promote to required     -      [promotion] thresholds all green, remove continue-on-error
 ```
+
+Day 2 and Day 4 are intentionally empty — apply is idempotent, so there is no forced action between the Day 1 bootstrap and the Day 3 / Day 5 integration steps. Run `flaker apply` whenever you want (manually or in cron); skip days if nothing changed.
 
 **Never skip the `continue-on-error: true` on the first PR job.** The CI job becomes a required check ONLY after `flaker status` drift reports `ready` (all 5 `[promotion]` thresholds met). Promoting too early causes false negatives that erode developer trust.
 
