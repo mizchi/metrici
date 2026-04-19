@@ -61,6 +61,12 @@ describe("top-level aliases", () => {
     expect(help).toContain("--json");
   });
 
+  it("flaker quarantine apply --help shows quarantine apply options", () => {
+    const help = execSync(`node ${cliPath} quarantine apply --help`, { encoding: "utf-8" });
+    expect(help).toContain("--from");
+    expect(help).toContain("--create-issues");
+  });
+
   it("flaker doctor --help shows the top-level doctor alias", () => {
     const help = execSync(`node ${cliPath} doctor --help`, { encoding: "utf-8" });
     expect(help).toContain("User-facing environment check");

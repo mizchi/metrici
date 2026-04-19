@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
@@ -6,7 +6,14 @@ import { DuckDBStore } from "../storage/duckdb.js";
 import {
   formatQuarantineSuggestionPlan,
   runQuarantineSuggest,
+  type QuarantineSuggestionPlan,
 } from "../commands/quarantine/suggest.js";
+import {
+  formatQuarantineApplyResult,
+  runQuarantineApply,
+} from "../commands/quarantine/apply.js";
+import { createGhIssue, isGhAvailable } from "../gh.js";
+import { buildQuarantineIssueOpts } from "../commands/policy/quarantine.js";
 
 function writeOutput(path: string, content: string): void {
   const target = resolve(process.cwd(), path);
@@ -39,10 +46,57 @@ export async function quarantineSuggestAction(
   }
 }
 
+function readPlan(path: string): QuarantineSuggestionPlan {
+  const target = resolve(process.cwd(), path);
+  return JSON.parse(readFileSync(target, "utf8")) as QuarantineSuggestionPlan;
+}
+
+export async function quarantineApplyAction(
+  opts: { from: string; createIssues?: boolean },
+): Promise<void> {
+  const config = loadConfig(process.cwd());
+  const store = new DuckDBStore(resolve(config.storage.path));
+  await store.initialize();
+  try {
+    const plan = readPlan(opts.from);
+    const createIssue = opts.createIssues
+      ? (input: {
+        selector: { suite: string; testName: string };
+        flakeRatePercentage: number;
+        totalRuns: number;
+        reason: string;
+      }) => {
+        if (!isGhAvailable()) {
+          console.error("Warning: gh CLI not found. Skipping issue creation.");
+          return null;
+        }
+        const issueOpts = buildQuarantineIssueOpts({
+          suite: input.selector.suite,
+          testName: input.selector.testName,
+          flakyRate: input.flakeRatePercentage,
+          totalRuns: input.totalRuns,
+          reason: input.reason,
+        });
+        return createGhIssue({
+          title: issueOpts.title,
+          body: issueOpts.body,
+          labels: issueOpts.labels,
+          repo: `${config.repo.owner}/${config.repo.name}`,
+        });
+      }
+      : undefined;
+
+    const result = await runQuarantineApply({ store, plan, createIssue });
+    console.log(formatQuarantineApplyResult(result));
+  } finally {
+    await store.close();
+  }
+}
+
 export function registerQuarantineCommands(program: Command): void {
   const quarantine = program
     .command("quarantine")
-    .description("Read-only quarantine planning and inspection");
+    .description("Quarantine planning and plan-based mutation");
 
   quarantine
     .command("suggest")
@@ -51,4 +105,11 @@ export function registerQuarantineCommands(program: Command): void {
     .option("--json", "Output as JSON")
     .option("--output <file>", "Write the rendered plan to a file")
     .action(quarantineSuggestAction);
+
+  quarantine
+    .command("apply")
+    .description("Apply a reviewed quarantine plan")
+    .requiredOption("--from <file>", "Read plan JSON from a file")
+    .option("--create-issues", "Create GitHub issues for newly quarantined tests")
+    .action(quarantineApplyAction);
 }
