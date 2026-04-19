@@ -14,7 +14,8 @@ import { executePreparedLocalRun } from "../commands/exec/execute-prepared-local
 import { createConfiguredResolver } from "./shared-resolver.js";
 import { detectChangedFiles } from "../core/git.js";
 import { loadQuarantineManifestIfExists } from "../quarantine-manifest.js";
-import { executePlan, type ExecutorDeps } from "../commands/apply/executor.js";
+import { executeDag } from "../commands/apply/dag.js";
+import type { ExecutorDeps } from "../commands/apply/executor.js";
 
 function describeAction(action: PlannedAction): string {
   switch (action.kind) {
@@ -130,18 +131,25 @@ export async function applyAction(opts: { json?: boolean }): Promise<void> {
       return;
     }
 
-    const result = await executePlan(actions, deps);
+    const result = await executeDag(actions, deps);
     if (opts.json) {
       console.log(JSON.stringify(result, null, 2));
     } else {
       for (const exec of result.executed) {
-        const mark = exec.ok ? "ok  " : "fail";
-        console.log(`${mark} ${exec.kind}${exec.error ? ` — ${exec.error}` : ""}`);
-        if (exec.ok && exec.kind === "cold_start_run" && isColdStartZeroTest(exec.result)) {
+        const mark =
+          exec.status === "ok"      ? "ok  " :
+          exec.status === "failed"  ? "fail" :
+                                      "skip";
+        const suffix =
+          exec.status === "failed"  ? ` — ${exec.error ?? ""}` :
+          exec.status === "skipped" ? ` — ${exec.skippedReason ?? ""}` :
+                                      "";
+        console.log(`${mark} ${exec.kind}${suffix}`);
+        if (exec.status === "ok" && exec.kind === "cold_start_run" && isColdStartZeroTest(exec.result)) {
           process.stderr.write(renderZeroTestHint() + "\n");
         }
       }
-      if (result.aborted) {
+      if (result.executed.some((e) => e.status === "failed")) {
         process.exitCode = 1;
       }
     }
