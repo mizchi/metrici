@@ -12,6 +12,7 @@ Fix: self-host nightly + PR advisory workflows called `flaker kpi` and `flaker a
 ### Fixed
 
 - `.github/workflows/nightly-self-host.yml`, `.github/workflows/ci.yml`: migrated the two `Snapshot KPI` / `Snapshot eval` steps from the removed `kpi` / `analyze eval` commands to the new `dev kpi` / `dev eval` maintainer tools. The self-host review template (`scripts/self-host-review.mjs`) is unchanged.
+- `.github/workflows/ci.yml`: the main `test` job used the default shallow checkout (`fetch-depth: 1`), making `tests/core/git-diff-tree.test.ts` / `tests/commands/collect-commit-changes.test.ts` fail 100% in CI because `git diff-tree -m --first-parent HEAD` can't reach HEAD's parent. Both tests were appearing in the self-host flaky report (#37). `fetch-depth: 0` aligns the `test` job with `self-host-advisory` / nightly, which already use full history.
 
 ## 0.10.6
 

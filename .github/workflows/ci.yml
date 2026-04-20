@@ -13,6 +13,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # tests/core/git-diff-tree.test.ts and tests/commands/collect-commit-changes.test.ts
+          # resolve HEAD's parent via `git diff-tree -m --first-parent`. With the default
+          # shallow clone (fetch-depth=1) the parent commit is unreachable and the
+          # command returns empty output, making both tests fail deterministically in CI.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
