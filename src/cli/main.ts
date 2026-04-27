@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { setupInitAction } from "./commands/setup/init.js";
@@ -14,8 +14,17 @@ import { registerDevCommands } from "./categories/dev.js";
 import { registerApplyCommands } from "./categories/apply.js";
 
 function isDirectCliExecution(): boolean {
-  return process.argv[1] != null
-    && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  if (process.argv[1] == null) return false;
+  // Both sides must be canonicalized: under pnpm's default isolated layout
+  // node_modules/.bin/flaker and node_modules/<pkg>/dist/cli/main.js are
+  // symlinks, so process.argv[1] is the symlink path while
+  // fileURLToPath(import.meta.url) is the realpath under .pnpm/. Without
+  // realpathSync on argv[1] the strings diverge and the CLI exits silently.
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
 }
 
 export function createProgram(): Command {
