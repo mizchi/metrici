@@ -9,6 +9,7 @@ import { tapAdapter } from "./tap.js";
 import { gotestAdapter } from "./gotest.js";
 import { cargoTestAdapter } from "./cargo.js";
 import { moontestAdapter } from "./moontest.js";
+import { chaosbringerAdapter } from "./chaosbringer.js";
 
 export function createTestResultAdapter(
   type: string,
@@ -33,6 +34,8 @@ export function createTestResultAdapter(
       return cargoTestAdapter;
     case "moontest":
       return moontestAdapter;
+    case "chaosbringer":
+      return chaosbringerAdapter;
     case "custom":
       if (!customCommand) {
         throw new Error("Custom adapter requires a command (customCommand)");

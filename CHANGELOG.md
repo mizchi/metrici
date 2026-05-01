@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- New `chaosbringer` test-result adapter: `flaker import <chaos-report.json> --adapter chaosbringer`. Maps each visited page to one TestCaseResult (`suite=chaosbringer:pages`, `testName=<pathname>`, status from `page.status` + errors, recovered → flaky), and each invariant violation to its own row (`suite=chaosbringer:invariants`, `taskId=<pathname>`). Lets the existing flaky / quarantine / KPI pipeline ingest chaos crawl signals as if they were ordinary test runs.
+
 ## 0.10.7
 
 Fix: self-host nightly + PR advisory workflows called `flaker kpi` and `flaker analyze eval`, both removed in 0.8.0 (#37). The next scheduled run would have failed at `Snapshot KPI` / `Snapshot eval`, breaking the nightly issue update.
