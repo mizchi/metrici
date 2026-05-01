@@ -135,6 +135,7 @@ export async function analyzeClusterAction(opts: {
   minCoFailures: string;
   minCoRate: string;
   top: string;
+  json?: boolean;
 }): Promise<void> {
   const config = loadConfig(process.cwd());
   const store = new DuckDBStore(resolve(config.storage.path));
@@ -147,7 +148,11 @@ export async function analyzeClusterAction(opts: {
       minCoRate: Number(opts.minCoRate),
       top: parseInt(opts.top, 10),
     });
-    console.log(formatFailureClusters(clusters));
+    if (opts.json) {
+      console.log(JSON.stringify(clusters, null, 2));
+    } else {
+      console.log(formatFailureClusters(clusters));
+    }
   } finally {
     await store.close();
   }
