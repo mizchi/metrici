@@ -170,6 +170,8 @@ export interface CoFailureResult {
 export interface CoFailureQueryOpts {
   windowDays?: number;
   minCoRuns?: number;
+  /** Reference time for the window cutoff. Defaults to `new Date()`. */
+  now?: Date;
 }
 
 export interface TestCoFailurePair {
@@ -193,6 +195,8 @@ export interface TestCoFailureQueryOpts {
   windowDays?: number;
   minCoFailures?: number;
   minCoRate?: number;
+  /** Reference time for the window cutoff. Defaults to `new Date()`. */
+  now?: Date;
 }
 
 export interface ExportResult {

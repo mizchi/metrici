@@ -26,8 +26,11 @@ export async function analyzeCoFailureWindows(
 ): Promise<CoFailureWindowReport> {
   const windows = windowDays ?? DEFAULT_WINDOWS;
   const rows: CoFailureWindowRow[] = [];
+  const now = new Date();
 
   for (const days of windows) {
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
     const result = await store.raw<{
       file_path: string;
       test_id: string;
@@ -36,7 +39,7 @@ export async function analyzeCoFailureWindows(
       co_runs: number;
       co_failures: number;
       co_failure_rate: number;
-    }>(CO_FAILURE_QUERY, [String(days), String(minCoRuns)]);
+    }>(CO_FAILURE_QUERY, [cutoffLiteral, minCoRuns]);
 
     if (result.length === 0) {
       rows.push({

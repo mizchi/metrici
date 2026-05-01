@@ -5,6 +5,18 @@ export interface InsightsOpts {
   store: MetricStore;
   windowDays?: number;
   top?: number;
+  /**
+   * Reference time for the window cutoff. Defaults to `new Date()`.
+   * Threaded so tests / scripts can inject a stable now without relying
+   * on `CURRENT_TIMESTAMP` (which is evaluated by DuckDB in UTC and was
+   * the root cause of the 0.10.2 timezone flake).
+   */
+  now?: Date;
+}
+
+function toCutoffLiteral(now: Date, windowDays: number): string {
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  return cutoff.toISOString().replace("T", " ").replace("Z", "");
 }
 
 interface TestSourceStats {
@@ -38,6 +50,8 @@ export interface InsightsResult {
 export async function runInsights(opts: InsightsOpts): Promise<InsightsResult> {
   const window = opts.windowDays ?? 90;
   const top = opts.top ?? 20;
+  const now = opts.now ?? new Date();
+  const cutoffLiteral = toCutoffLiteral(now, window);
   const workflowSourceExpr = workflowRunSourceSql("wr");
 
   const rows = await opts.store.raw<{
@@ -59,7 +73,7 @@ export async function runInsights(opts: InsightsOpts): Promise<InsightsResult> {
         AND tr.status IN ('failed', 'flaky'))::INTEGER AS local_fails
     FROM test_results tr
     LEFT JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+    WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
     GROUP BY tr.suite, tr.test_name
     HAVING ci_runs + local_runs >= 2
   `);

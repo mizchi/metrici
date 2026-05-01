@@ -147,7 +147,7 @@ SELECT
   )::DOUBLE AS co_failure_rate
 FROM commit_changes cc
 JOIN test_results tr ON cc.commit_sha = tr.commit_sha
-WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+WHERE tr.created_at > ?::TIMESTAMP
 GROUP BY cc.file_path, tr.test_id, tr.suite, tr.test_name
 HAVING co_runs >= ? AND co_failures > 0
 ORDER BY co_failure_rate DESC
@@ -163,7 +163,7 @@ WITH failed_results AS (
     test_name,
     filter_text
   FROM test_results
-  WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+  WHERE created_at > ?::TIMESTAMP
     AND (
       status IN ('failed', 'flaky')
       OR (retry_count > 0 AND status = 'passed')

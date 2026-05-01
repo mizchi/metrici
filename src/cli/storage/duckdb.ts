@@ -504,7 +504,10 @@ export class DuckDBStore implements MetricStore {
   async queryCoFailures(opts: CoFailureQueryOpts): Promise<CoFailureResult[]> {
     const windowDays = opts.windowDays ?? 90;
     const minCoRuns = opts.minCoRuns ?? 3;
-    const rows = await this.all(CO_FAILURE_QUERY, [windowDays.toString(), minCoRuns]);
+    const now = opts.now ?? new Date();
+    const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
+    const rows = await this.all(CO_FAILURE_QUERY, [cutoffLiteral, minCoRuns]);
     return rows.map((r: any) => ({
       filePath: r.file_path,
       testId: r.test_id,
@@ -538,9 +541,12 @@ export class DuckDBStore implements MetricStore {
     const windowDays = opts?.windowDays ?? 90;
     const minCoFailures = opts?.minCoFailures ?? 2;
     const minCoRate = opts?.minCoRate ?? 0.8;
+    const now = opts?.now ?? new Date();
+    const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
     const rows = await this.all(
       TEST_CO_FAILURE_QUERY,
-      [windowDays.toString(), minCoFailures, minCoRate],
+      [cutoffLiteral, minCoFailures, minCoRate],
     );
     return rows.map((row: any) => ({
       testAId: row.test_a_id,
