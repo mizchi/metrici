@@ -13,3 +13,6 @@ result
 .artifacts/
 .direnv
 .worktrees/
+
+# Claude Code runtime locks
+.claude/scheduled_tasks.lock
