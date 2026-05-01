@@ -33,6 +33,7 @@ export function registerExplainCommands(program: Command): void {
     .option("--min-co-failures <n>", "Minimum shared failing runs", "2")
     .option("--min-co-rate <ratio>", "Minimum co-failure rate as ratio (0.0-1.0)", "0.8")
     .option("--top <n>", "Number of clusters to show", "20")
+    .option("--json", "Output clusters as machine-readable JSON")
     .action(analyzeClusterAction);
 
   explain
