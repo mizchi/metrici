@@ -29,8 +29,12 @@ export async function buildContext(
   opts: {
     storagePath: string;
     resolverConfigured: boolean;
+    /** Reference time for the data-age range. Defaults to `new Date()`. */
+    now?: Date;
   },
 ): Promise<FlakerContext> {
+  const now = opts.now ?? new Date();
+  const nowLiteral = now.toISOString().replace("T", " ").replace("Z", "");
   const modelsDir = resolve(dirname(opts.storagePath), "models");
   const gbdtModelAvailable = existsSync(resolve(modelsDir, "gbdt.json"));
   let tunedAlpha: number | null = null;
@@ -74,8 +78,8 @@ export async function buildContext(
   try {
     const [dateRange] = await store.raw<{ oldest: number; newest: number }>(
       `SELECT
-        DATEDIFF('day', MIN(created_at), CURRENT_TIMESTAMP)::INTEGER AS oldest,
-        DATEDIFF('day', MAX(created_at), CURRENT_TIMESTAMP)::INTEGER AS newest
+        DATEDIFF('day', MIN(created_at), '${nowLiteral}'::TIMESTAMP)::INTEGER AS oldest,
+        DATEDIFF('day', MAX(created_at), '${nowLiteral}'::TIMESTAMP)::INTEGER AS newest
        FROM test_results
        WHERE created_at IS NOT NULL`,
     );

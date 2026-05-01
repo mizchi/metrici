@@ -7,6 +7,8 @@ export interface FailureClusterOpts {
   minCoFailures?: number;
   minCoRate?: number;
   top?: number;
+  /** Reference time for the window cutoff. Defaults to `new Date()`. */
+  now?: Date;
 }
 
 export async function runFailureClusters(
@@ -17,6 +19,7 @@ export async function runFailureClusters(
     windowDays: opts.windowDays ?? defaults.windowDays,
     minCoFailures: opts.minCoFailures ?? defaults.minCoFailures,
     minCoRate: opts.minCoRate ?? defaults.minCoRate,
+    ...(opts.now ? { now: opts.now } : {}),
   });
   const clusters = buildFailureClusters(pairs);
   return opts.top != null ? clusters.slice(0, opts.top) : clusters;

@@ -50,6 +50,8 @@ export interface AnalysisBundleOpts {
   failureHistoryLimit?: number;
   clusterTop?: number;
   insightsTop?: number;
+  /** Reference time for the window cutoff. Defaults to `new Date()`. */
+  now?: Date;
 }
 
 interface WorkflowRunCountsRow {
@@ -550,9 +552,13 @@ async function loadFailureEvidence(
 ): Promise<FlakerAnalysisBundleFailureEvidence[]> {
   const evidenceTop = opts.failureEvidenceTop ?? 10;
   const failureHistoryLimit = opts.failureHistoryLimit ?? 10;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - opts.windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const flakyTests = await opts.store.queryFlakyTests({
     windowDays: opts.windowDays,
     top: evidenceTop,
+    now,
   });
 
   const evidence: FlakerAnalysisBundleFailureEvidence[] = [];
@@ -584,11 +590,11 @@ async function loadFailureEvidence(
         tr.created_at
       FROM test_results tr
       LEFT JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+      WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
         AND COALESCE(tr.test_id, '') = ?
       ORDER BY tr.created_at DESC, tr.id DESC
       LIMIT ?
-    `, [opts.windowDays.toString(), flaky.testId, failureHistoryLimit]);
+    `, [flaky.testId, failureHistoryLimit]);
 
     const sources = new Set<"ci" | "local">();
     for (const row of historyRows) {
@@ -641,6 +647,9 @@ export async function runAnalysisBundle(
   const recentFailuresLimit = opts.recentFailuresLimit ?? 20;
   const clusterTop = opts.clusterTop ?? 10;
   const insightsTop = opts.insightsTop ?? 10;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const workflowSourceExpr = workflowRunSourceSql("wr");
 
   const [
@@ -661,16 +670,16 @@ export async function runAnalysisBundle(
         COUNT(*) FILTER (WHERE ${workflowSourceExpr} = 'ci')::INTEGER AS ci_runs,
         COUNT(*) FILTER (WHERE ${workflowSourceExpr} = 'local')::INTEGER AS local_runs
       FROM workflow_runs wr
-      WHERE wr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
-    `, [windowDays.toString()]),
+      WHERE wr.created_at > '${cutoffLiteral}'::TIMESTAMP
+    `),
     opts.store.raw<TestResultCountsRow>(`
       SELECT
         COUNT(*)::INTEGER AS total_results,
         COUNT(DISTINCT COALESCE(NULLIF(test_id, ''), suite || '::' || test_name))::INTEGER AS unique_tests,
         COUNT(DISTINCT commit_sha)::INTEGER AS unique_commits
       FROM test_results
-      WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
-    `, [windowDays.toString()]),
+      WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
+    `),
     opts.store.raw<RecentFailureRow>(`
       SELECT
         COALESCE(tr.test_id, '') AS test_id,
@@ -698,26 +707,28 @@ export async function runAnalysisBundle(
         tr.created_at
       FROM test_results tr
       LEFT JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+      WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
         AND (
           tr.status IN ('failed', 'flaky')
           OR (tr.retry_count > 0 AND tr.status = 'passed')
         )
       ORDER BY tr.created_at DESC, tr.id DESC
       LIMIT ?
-    `, [windowDays.toString(), recentFailuresLimit]),
+    `, [recentFailuresLimit]),
     buildContext(opts.store, {
       storagePath: opts.storagePath,
       resolverConfigured: opts.resolverConfigured,
+      now,
     }),
-    computeKpi(opts.store, { windowDays }),
-    runEval({ store: opts.store, windowDays }),
-    runReason({ store: opts.store, windowDays }),
-    runInsights({ store: opts.store, windowDays, top: insightsTop }),
+    computeKpi(opts.store, { windowDays, now }),
+    runEval({ store: opts.store, windowDays, now }),
+    runReason({ store: opts.store, windowDays, now }),
+    runInsights({ store: opts.store, windowDays, top: insightsTop, now }),
     runFailureClusters({
       store: opts.store,
       windowDays,
       top: clusterTop,
+      now,
     }),
     loadFailureEvidence({
       ...opts,

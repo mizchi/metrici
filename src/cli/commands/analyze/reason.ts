@@ -37,11 +37,12 @@ export interface ReasoningReport {
   };
 }
 
-export async function runReason(opts: { store: MetricStore; windowDays?: number }): Promise<ReasoningReport> {
+export async function runReason(opts: { store: MetricStore; windowDays?: number; now?: Date }): Promise<ReasoningReport> {
   const { store } = opts;
   const windowDays = opts.windowDays ?? 30;
+  const now = opts.now;
 
-  const flakyTests = await store.queryFlakyTests({ windowDays });
+  const flakyTests = await store.queryFlakyTests({ windowDays, ...(now ? { now } : {}) });
   const trueFlakyTests = await store.queryTrueFlakyTests();
 
   const trueFlakyMap = new Map<string, TrueFlakyScore>();

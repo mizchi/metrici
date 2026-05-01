@@ -110,10 +110,12 @@ export async function runStatusSummary(input: {
 }): Promise<StatusSummary> {
   const now = input.now ?? new Date();
   const windowDays = input.windowDays ?? 30;
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const workflowSourceExpr = workflowRunSourceSql("wr");
 
   const [kpi, activityRows, currentQuarantine, quarantinePlan] = await Promise.all([
-    computeKpi(input.store, { windowDays }),
+    computeKpi(input.store, { windowDays, now }),
     input.store.raw<{
       total_runs: number;
       ci_runs: number;
@@ -124,13 +126,13 @@ export async function runStatusSummary(input: {
       WITH recent_runs AS (
         SELECT wr.id, ${workflowSourceExpr} AS source
         FROM workflow_runs wr
-        WHERE wr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+        WHERE wr.created_at > '${cutoffLiteral}'::TIMESTAMP
       ),
       recent_results AS (
         SELECT tr.status, tr.retry_count
         FROM test_results tr
         JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-        WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+        WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
       )
       SELECT
         (SELECT COUNT(*)::INTEGER FROM recent_runs) AS total_runs,

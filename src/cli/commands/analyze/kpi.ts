@@ -50,9 +50,14 @@ export interface FlakerKpi {
 
 export async function computeKpi(
   store: MetricStore,
-  opts?: { windowDays?: number },
+  opts?: { windowDays?: number; now?: Date },
 ): Promise<FlakerKpi> {
   const window = opts?.windowDays ?? 30;
+  const now = opts?.now ?? new Date();
+  const cutoff = new Date(now.getTime() - window * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
+  const cutoffPrev = new Date(now.getTime() - window * 2 * 24 * 60 * 60 * 1000);
+  const cutoffPrevLiteral = cutoffPrev.toISOString().replace("T", " ").replace("Z", "");
   const workflowSourceExpr = workflowRunSourceSql("wr");
 
   // --- Sampling: confusion matrix from matched commits ---
@@ -71,14 +76,14 @@ export async function computeKpi(
         sr.selected_count, sr.candidate_count, sr.duration_ms
       FROM sampling_runs sr
       WHERE sr.command_kind = 'run'
-        AND sr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        AND sr.created_at > '${cutoffLiteral}'::TIMESTAMP
     ),
     sampled_tests AS (
       SELECT sr.commit_sha, srt.suite, srt.test_name
       FROM sampling_run_tests srt
       JOIN sampling_runs sr ON srt.sampling_run_id = sr.id
       WHERE sr.command_kind = 'run'
-        AND sr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        AND sr.created_at > '${cutoffLiteral}'::TIMESTAMP
         AND srt.is_holdout = FALSE
     ),
     holdout_tests AS (
@@ -86,7 +91,7 @@ export async function computeKpi(
       FROM sampling_run_tests srt
       JOIN sampling_runs sr ON srt.sampling_run_id = sr.id
       WHERE sr.command_kind = 'run'
-        AND sr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        AND sr.created_at > '${cutoffLiteral}'::TIMESTAMP
         AND srt.is_holdout = TRUE
     ),
     ci_results AS (
@@ -94,7 +99,7 @@ export async function computeKpi(
       FROM test_results tr
       JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
       WHERE ${workflowSourceExpr} = 'ci'
-        AND tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        AND tr.created_at > '${cutoffLiteral}'::TIMESTAMP
     ),
     matched_commits AS (
       SELECT DISTINCT ls.commit_sha
@@ -172,7 +177,7 @@ export async function computeKpi(
       JOIN sampling_runs sr ON srt.sampling_run_id = sr.id
       LEFT JOIN test_results tr ON tr.suite = srt.suite AND tr.test_name = srt.test_name
         AND tr.commit_sha = sr.commit_sha
-      WHERE sr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+      WHERE sr.created_at > '${cutoffLiteral}'::TIMESTAMP
     ) sub
   `);
 
@@ -191,7 +196,7 @@ export async function computeKpi(
         suite || '::' || test_name AS key,
         ROUND(COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 1) AS fail_rate
       FROM test_results
-      WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+      WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
       GROUP BY suite, test_name
       HAVING COUNT(*) >= 5
     ) sub
@@ -203,15 +208,15 @@ export async function computeKpi(
         SELECT suite, test_name, COUNT(*) AS runs,
           COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) AS fails
         FROM test_results
-        WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
         GROUP BY suite, test_name HAVING runs >= 5 AND fails > 0
       ) sub) AS current_count,
       (SELECT COUNT(DISTINCT suite || '::' || test_name)::INTEGER FROM (
         SELECT suite, test_name, COUNT(*) AS runs,
           COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) AS fails
         FROM test_results
-        WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window * 2)} || ' days')
-          AND created_at <= CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+        WHERE created_at > '${cutoffPrevLiteral}'::TIMESTAMP
+          AND created_at <= '${cutoffLiteral}'::TIMESTAMP
         GROUP BY suite, test_name HAVING runs >= 5 AND fails > 0
       ) sub) AS previous_count
   `);
@@ -227,12 +232,12 @@ export async function computeKpi(
   }>(`
     SELECT
       (SELECT COUNT(DISTINCT commit_sha)::INTEGER FROM test_results
-       WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+       WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
          AND commit_sha IS NOT NULL) AS commit_count,
       (SELECT COUNT(DISTINCT commit_sha)::INTEGER FROM commit_changes
        WHERE commit_sha IN (
          SELECT DISTINCT commit_sha FROM test_results
-         WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+         WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
        )) AS commits_with_changes,
       (SELECT MAX(created_at)::VARCHAR FROM test_results) AS last_data_at
   `);

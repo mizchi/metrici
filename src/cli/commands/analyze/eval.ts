@@ -474,10 +474,13 @@ async function getBuildSamplingKpi(): Promise<(rows: CommitSignal[]) => Sampling
 }
 
 export async function runSamplingKpi(
-  opts: { store: MetricStore; windowDays?: number },
+  opts: { store: MetricStore; windowDays?: number; now?: Date },
 ): Promise<SamplingKpiReport> {
   const { store } = opts;
   const windowDays = opts.windowDays ?? 30;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const workflowSourceExpr = workflowRunSourceSql("wr");
   const commitSignalRows = await store.raw<CommitSignalRow>(`
     WITH recent_results AS (
@@ -494,7 +497,7 @@ export async function runSamplingKpi(
         tr.retry_count
       FROM workflow_runs wr
       INNER JOIN test_results tr ON tr.workflow_run_id = wr.id
-      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+      WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
     ),
     aggregated_results AS (
       SELECT
@@ -520,7 +523,7 @@ export async function runSamplingKpi(
         ROW_NUMBER() OVER (PARTITION BY commit_sha ORDER BY created_at DESC, id DESC) AS row_num
       FROM sampling_runs
       WHERE command_kind = 'run'
-        AND created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+        AND created_at > '${cutoffLiteral}'::TIMESTAMP
     )
     SELECT
       ar.commit_sha,
@@ -544,7 +547,7 @@ export async function runSamplingKpi(
       ON ar.run_kind = 'local'
      AND rs.commit_sha = ar.commit_sha
      AND rs.row_num = 1
-  `, [windowDays.toString(), windowDays.toString()]);
+  `);
   const buildSamplingKpi = await getBuildSamplingKpi();
   return buildSamplingKpi(
     commitSignalRows.map((row) => ({
@@ -559,9 +562,14 @@ export async function runSamplingKpi(
   );
 }
 
-export async function runEval(opts: { store: MetricStore; windowDays?: number }): Promise<EvalReport> {
+export async function runEval(opts: { store: MetricStore; windowDays?: number; now?: Date }): Promise<EvalReport> {
   const { store } = opts;
   const windowDays = opts.windowDays ?? 30;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
+  const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const cutoff7dLiteral = cutoff7d.toISOString().replace("T", " ").replace("Z", "");
 
   // 1. Data Sufficiency
   const [statsRow] = await store.raw<{
@@ -610,16 +618,16 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
     older_flaky AS (
       SELECT DISTINCT suite, test_name FROM test_results
       WHERE status IN ('failed', 'flaky')
-        AND created_at < CURRENT_TIMESTAMP - INTERVAL '7 days'
+        AND created_at < '${cutoff7dLiteral}'::TIMESTAMP
     ),
     recent_flaky AS (
       SELECT DISTINCT suite, test_name FROM test_results
       WHERE status IN ('failed', 'flaky')
-        AND created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+        AND created_at >= '${cutoff7dLiteral}'::TIMESTAMP
     ),
     recent_any AS (
       SELECT DISTINCT suite, test_name FROM test_results
-      WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+      WHERE created_at >= '${cutoff7dLiteral}'::TIMESTAMP
     )
     SELECT
       (SELECT COUNT(*)::INTEGER FROM older_flaky o
