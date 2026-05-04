@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- `src/cli/commands/analyze/reason.ts`, `src/cli/commands/collect/calibrate.ts`, `src/cli/commands/gate/history.ts`, `src/cli/commands/dev/train.ts`, `src/cli/categories/dev.ts`: completed the `now?: Date` audit started in #84/#85 (issue #64). Twelve more `created_at > CURRENT_TIMESTAMP - INTERVAL '... days'` cutoffs across `runReason` (`detectPatterns`, `predictRisks`), `analyzeProject`, `queryTopTests`, `runGateHistory`, `trainModel`, and the inline `dev tune` query were converted to JS-computed literal cutoffs (`'YYYY-MM-DD HH:MM:SS'::TIMESTAMP`). Callers that pin `now` (snapshot/replay tests, `bundle.ts`) now get the same window across every sub-query instead of mixing pinned and `wallclock - windowDays` cutoffs, removing the JST-vs-UTC flake class for the analyze/calibrate/gate-history/train commands.
+
 ## 0.11.1
 
 Patch follow-up to 0.11.0 — version-string only.

@@ -11,6 +11,7 @@ export interface TrainOpts {
   learningRate?: number;
   windowDays?: number;
   outputPath?: string;
+  now?: Date;
 }
 
 export interface TrainResult {
@@ -29,6 +30,9 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
   const numTrees = opts.numTrees ?? 15;
   const learningRate = opts.learningRate ?? 0.2;
   const windowDays = opts.windowDays ?? 90;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
 
   // Query historical test results with commit context and source info
   const rows = await opts.store.raw<{
@@ -50,7 +54,7 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
       COALESCE(wr.source, 'ci') AS source
     FROM test_results tr
     LEFT JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+    WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
   `);
 
   // Single-pass: build per-test aggregates and per-commit test maps

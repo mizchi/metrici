@@ -57,12 +57,14 @@ export function registerDevCommands(program: Command): void {
       try {
         const windowDays = parseInt(opts.window, 10);
         const samplePercentage = parseInt(opts.samplePercentage, 10);
+        const tuneCutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+        const tuneCutoffLiteral = tuneCutoff.toISOString().replace("T", " ").replace("Z", "");
 
         // Get recent commits with changed files and test results
         const commits = await store.raw<{
           commit_sha: string;
         }>(`SELECT DISTINCT commit_sha FROM test_results
-            WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+            WHERE created_at > '${tuneCutoffLiteral}'::TIMESTAMP
             ORDER BY commit_sha`);
 
         if (commits.length < 5) {

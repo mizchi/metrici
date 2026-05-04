@@ -32,8 +32,12 @@ export async function runGateHistory(input: {
   gate: GateName;
   config: FlakerConfig;
   windowDays?: number;
+  now?: Date;
 }): Promise<GateHistoryReport> {
   const windowDays = input.windowDays ?? 14;
+  const now = input.now ?? new Date();
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const backingProfile = profileNameFromGateName(input.gate);
   const workflowSourceExpr = workflowRunSourceSql("wr");
   const source = sourceForGate(input.gate);
@@ -56,7 +60,7 @@ export async function runGateHistory(input: {
       FROM workflow_runs wr
       LEFT JOIN test_results tr ON tr.workflow_run_id = wr.id
       WHERE ${workflowSourceExpr} = '${source}'
-        AND wr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+        AND wr.created_at > '${cutoffLiteral}'::TIMESTAMP
       GROUP BY day
     ),
     sample_days AS (
@@ -65,7 +69,7 @@ export async function runGateHistory(input: {
         ROUND(AVG(sample_ratio), 1)::DOUBLE AS avg_sample_ratio
       FROM sampling_runs
       WHERE command_kind = 'run'
-        AND created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+        AND created_at > '${cutoffLiteral}'::TIMESTAMP
       GROUP BY day
     )
     SELECT
@@ -81,7 +85,7 @@ export async function runGateHistory(input: {
   `);
 
   const profile = resolveProfile(backingProfile, input.config.profile, input.config.sampling);
-  const kpi = await computeKpi(input.store, { windowDays });
+  const kpi = await computeKpi(input.store, { windowDays, now });
   const currentReview = buildGateReview({ gate: input.gate, profile, kpi });
 
   const entries: GateHistoryEntry[] = rows.map((row, index) => {
