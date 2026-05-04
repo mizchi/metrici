@@ -40,9 +40,9 @@ export interface ReasoningReport {
 export async function runReason(opts: { store: MetricStore; windowDays?: number; now?: Date }): Promise<ReasoningReport> {
   const { store } = opts;
   const windowDays = opts.windowDays ?? 30;
-  const now = opts.now;
+  const now = opts.now ?? new Date();
 
-  const flakyTests = await store.queryFlakyTests({ windowDays, ...(now ? { now } : {}) });
+  const flakyTests = await store.queryFlakyTests({ windowDays, now });
   const trueFlakyTests = await store.queryTrueFlakyTests();
 
   const trueFlakyMap = new Map<string, TrueFlakyScore>();
@@ -51,8 +51,8 @@ export async function runReason(opts: { store: MetricStore; windowDays?: number;
   }
 
   const classifications = await classifyTests(store, flakyTests, trueFlakyMap);
-  const patterns = await detectPatterns(store, flakyTests);
-  const riskPredictions = await predictRisks(store, windowDays);
+  const patterns = await detectPatterns(store, flakyTests, now);
+  const riskPredictions = await predictRisks(store, windowDays, now);
 
   return {
     classifications,
@@ -154,6 +154,7 @@ async function classifyTests(
 async function detectPatterns(
   store: MetricStore,
   flakyTests: FlakyScore[],
+  now: Date,
 ): Promise<Pattern[]> {
   const patterns: Pattern[] = [];
 
@@ -177,11 +178,13 @@ async function detectPatterns(
 
   // New test risk
   try {
+    const recentCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const recentLiteral = recentCutoff.toISOString().replace("T", " ").replace("Z", "");
     const newTestRows = await store.raw<{ suite: string; test_name: string; total: number; fails: number }>(`
       SELECT suite, test_name, COUNT(*)::INTEGER as total,
         COUNT(*) FILTER (WHERE status IN ('failed', 'flaky'))::INTEGER as fails
       FROM test_results
-      WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '7 days'
+      WHERE created_at > '${recentLiteral}'::TIMESTAMP
       GROUP BY suite, test_name
       HAVING COUNT(*) <= 5 AND COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) > 0
     `);
@@ -200,8 +203,12 @@ async function detectPatterns(
   return patterns;
 }
 
-async function predictRisks(store: MetricStore, windowDays: number): Promise<RiskPrediction[]> {
+async function predictRisks(store: MetricStore, windowDays: number, now: Date): Promise<RiskPrediction[]> {
   try {
+    const recentCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const recentLiteral = recentCutoff.toISOString().replace("T", " ").replace("Z", "");
+    const windowCutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const windowLiteral = windowCutoff.toISOString().replace("T", " ").replace("Z", "");
     const rows = await store.raw<{
       suite: string; test_name: string;
       total: number; recent_fails: number; avg_duration: number; duration_variance: number;
@@ -211,11 +218,11 @@ async function predictRisks(store: MetricStore, windowDays: number): Promise<Ris
           suite, test_name,
           COUNT(*)::INTEGER as total,
           COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')
-            AND created_at > CURRENT_TIMESTAMP - INTERVAL '7 days')::INTEGER as recent_fails,
+            AND created_at > '${recentLiteral}'::TIMESTAMP)::INTEGER as recent_fails,
           AVG(duration_ms)::DOUBLE as avg_duration,
           STDDEV(duration_ms)::DOUBLE as duration_variance
         FROM test_results
-        WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
+        WHERE created_at > '${windowLiteral}'::TIMESTAMP
         GROUP BY suite, test_name
         HAVING COUNT(*) >= 5
           AND COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) * 100.0 / COUNT(*) < 10

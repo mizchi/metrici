@@ -30,15 +30,18 @@ export interface CalibrationResult {
  */
 export async function analyzeProject(
   store: MetricStore,
-  opts: { hasResolver: boolean; hasGBDTModel: boolean; windowDays?: number },
+  opts: { hasResolver: boolean; hasGBDTModel: boolean; windowDays?: number; now?: Date },
 ): Promise<ProjectProfile> {
   const window = opts.windowDays ?? 90;
+  const now = opts.now ?? new Date();
+  const cutoff = new Date(now.getTime() - window * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
 
   const testCountRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT tr.suite || '::' || tr.test_name) AS cnt
     FROM test_results tr
     JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+    WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
       AND COALESCE(wr.source, 'ci') = 'ci'
   `);
   const testCount = Number(testCountRows[0]?.cnt ?? 0);
@@ -62,7 +65,7 @@ export async function analyzeProject(
         ROUND(COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 1) AS fail_rate
       FROM test_results tr
       JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+      WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
         AND COALESCE(wr.source, 'ci') = 'ci'
       GROUP BY tr.suite, tr.test_name
       HAVING COUNT(*) >= 5
@@ -98,7 +101,7 @@ export async function analyzeProject(
               ELSE 0 END AS co_fail_rate
           FROM commit_changes cc
           JOIN test_results tr ON cc.commit_sha = tr.commit_sha
-          WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+          WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
           GROUP BY cc.file_path, test_key
           HAVING co_runs >= 3 AND co_fails > 0
         ) sub
@@ -112,7 +115,7 @@ export async function analyzeProject(
   const commitRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT commit_sha) AS cnt
     FROM test_results
-    WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
+    WHERE created_at > '${cutoffLiteral}'::TIMESTAMP
       AND commit_sha IS NOT NULL
   `);
   const commitCount = Number(commitRows[0]?.cnt ?? 0);
@@ -304,15 +307,19 @@ export function buildExplainContext(
 export async function queryTopTests(
   store: MetricStore,
   windowDays: number,
+  now?: Date,
 ): Promise<{ broken: string[]; flaky: string[] }> {
   const window = Number(windowDays);
+  const ref = now ?? new Date();
+  const cutoff = new Date(ref.getTime() - window * 24 * 60 * 60 * 1000);
+  const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
   const rows = await store.raw<{ key: string; fail_rate: number }>(`
     SELECT
       tr.suite || ' > ' || tr.test_name AS key,
       ROUND(COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 1) AS fail_rate
     FROM test_results tr
     JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
-    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${window} || ' days')
+    WHERE tr.created_at > '${cutoffLiteral}'::TIMESTAMP
       AND COALESCE(wr.source, 'ci') = 'ci'
     GROUP BY tr.suite, tr.test_name
     HAVING COUNT(*) >= 5 AND fail_rate > 0
