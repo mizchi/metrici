@@ -136,7 +136,15 @@ export async function analyzeClusterAction(opts: {
   minCoRate: string;
   top: string;
   json?: boolean;
+  workflow?: string;
+  lane?: string;
+  tag?: string[];
 }): Promise<void> {
+  const workflowFilter = parseWorkflowFilterOptions({
+    workflow: opts.workflow,
+    lane: opts.lane,
+    tag: opts.tag,
+  });
   const config = loadConfig(process.cwd());
   const store = new DuckDBStore(resolve(config.storage.path));
   await store.initialize();
@@ -147,6 +155,7 @@ export async function analyzeClusterAction(opts: {
       minCoFailures: parseInt(opts.minCoFailures, 10),
       minCoRate: Number(opts.minCoRate),
       top: parseInt(opts.top, 10),
+      ...(workflowFilter ? { workflow: workflowFilter } : {}),
     });
     if (opts.json) {
       console.log(JSON.stringify(clusters, null, 2));
@@ -156,6 +165,41 @@ export async function analyzeClusterAction(opts: {
   } finally {
     await store.close();
   }
+}
+
+function parseWorkflowFilterOptions(opts: {
+  workflow?: string;
+  lane?: string;
+  tag?: string[];
+}): { name?: string; lane?: string; tags?: Record<string, string> } | undefined {
+  const tags: Record<string, string> = {};
+  if (opts.tag) {
+    for (const raw of opts.tag) {
+      const eq = raw.indexOf("=");
+      if (eq <= 0) {
+        console.error(`Error: --tag value must be key=value, got "${raw}"`);
+        process.exit(2);
+      }
+      const key = raw.slice(0, eq).trim();
+      const value = raw.slice(eq + 1);
+      if (!key) {
+        console.error(`Error: --tag key must be non-empty, got "${raw}"`);
+        process.exit(2);
+      }
+      if (!/^[A-Za-z0-9_\-./]+$/.test(key)) {
+        console.error(`Error: --tag key contains unsupported characters: "${key}". Allowed: alphanumeric, _ - . /`);
+        process.exit(2);
+      }
+      tags[key] = value;
+    }
+  }
+  const hasAny = opts.workflow != null || opts.lane != null || Object.keys(tags).length > 0;
+  if (!hasAny) return undefined;
+  return {
+    ...(opts.workflow ? { name: opts.workflow } : {}),
+    ...(opts.lane ? { lane: opts.lane } : {}),
+    ...(Object.keys(tags).length > 0 ? { tags } : {}),
+  };
 }
 
 export async function analyzeReasonAction(opts: { window: string; json?: boolean }): Promise<void> {

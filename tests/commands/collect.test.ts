@@ -789,6 +789,73 @@ describe("collectWorkflowRuns", () => {
     expect(runs.map((row) => Number(row.id))).toEqual([3001]);
   });
 
+  it("populates workflow_name from the GitHub API run.name and applies workflowLanes mapping (#74)", async () => {
+    const mockRuns = [
+      {
+        id: 4001,
+        name: "cohort-regression",
+        head_branch: "main",
+        head_sha: "wf4001",
+        event: "push",
+        conclusion: "success",
+        created_at: "2025-06-12T00:00:00Z",
+        run_started_at: "2025-06-12T00:00:00Z",
+        updated_at: "2025-06-12T00:05:00Z",
+        path: ".github/workflows/cohort.yml",
+      },
+      {
+        id: 4002,
+        name: "interaction-suite",
+        head_branch: "main",
+        head_sha: "wf4002",
+        event: "push",
+        conclusion: "success",
+        created_at: "2025-06-12T00:10:00Z",
+        run_started_at: "2025-06-12T00:10:00Z",
+        updated_at: "2025-06-12T00:15:00Z",
+      },
+      {
+        id: 4003,
+        // No `name` and no mapping match — workflow_name should be null and lane should be null
+        head_branch: "main",
+        head_sha: "wf4003",
+        event: "push",
+        conclusion: "success",
+        created_at: "2025-06-12T00:20:00Z",
+        run_started_at: "2025-06-12T00:20:00Z",
+        updated_at: "2025-06-12T00:25:00Z",
+      },
+    ];
+
+    const github = createMockGitHubClient(mockRuns, {
+      4001: [{ name: "playwright-report", content: fixtureReport }],
+      4002: [{ name: "playwright-report", content: fixtureReport }],
+      4003: [{ name: "playwright-report", content: fixtureReport }],
+    });
+
+    const result = await collectWorkflowRuns({
+      store,
+      github,
+      repo: "owner/repo",
+      adapterType: "playwright",
+      artifactName: "playwright-report",
+      workflowLanes: {
+        "cohort-regression": "cohort",
+        "interaction-suite": "interaction",
+      },
+    });
+    expect(result.runsCollected).toBe(3);
+
+    const rows = await store.raw<{ id: number; workflow_name: string | null; lane: string | null }>(
+      "SELECT id, workflow_name, lane FROM workflow_runs WHERE id IN (4001, 4002, 4003) ORDER BY id",
+    );
+    expect(rows.map((r) => ({ id: Number(r.id), workflow_name: r.workflow_name, lane: r.lane }))).toEqual([
+      { id: 4001, workflow_name: "cohort-regression", lane: "cohort" },
+      { id: 4002, workflow_name: "interaction-suite", lane: "interaction" },
+      { id: 4003, workflow_name: null, lane: null },
+    ]);
+  });
+
   it("treats completed non-success runs without artifacts as failures", async () => {
     const mockRuns = [
       {

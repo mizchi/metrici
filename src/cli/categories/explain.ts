@@ -34,6 +34,9 @@ export function registerExplainCommands(program: Command): void {
     .option("--min-co-rate <ratio>", "Minimum co-failure rate as ratio (0.0-1.0)", "0.8")
     .option("--top <n>", "Number of clusters to show", "20")
     .option("--json", "Output clusters as machine-readable JSON")
+    .option("--workflow <name>", "Restrict co-failure analysis to runs with the given workflow_name")
+    .option("--lane <lane>", "Restrict co-failure analysis to runs in the given lane (e.g. sampled, cohort, interaction)")
+    .option("--tag <k=v...>", "Repeatable key=value tag filters (AND-combined)", collectTagOption, [] as string[])
     .action(analyzeClusterAction);
 
   explain
@@ -48,4 +51,8 @@ export function registerExplainCommands(program: Command): void {
     .description("Show environment data and strategy characteristics for decision-making")
     .option("--json", "Output as JSON for programmatic consumption")
     .action(analyzeContextAction);
+}
+
+function collectTagOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }

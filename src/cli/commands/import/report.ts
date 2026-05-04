@@ -14,6 +14,9 @@ interface ImportOpts {
   branch?: string;
   repo?: string;
   source?: WorkflowRunSource;
+  workflowName?: string;
+  lane?: string;
+  tags?: Record<string, string>;
 }
 
 interface ImportResult {
@@ -48,6 +51,9 @@ export async function runImport(opts: ImportOpts): Promise<ImportResult> {
     status: "completed",
     createdAt: now,
     durationMs: null,
+    workflowName: opts.workflowName ?? null,
+    lane: opts.lane ?? null,
+    tags: opts.tags ?? null,
   };
   await store.insertWorkflowRun(workflowRun);
 

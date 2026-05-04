@@ -24,7 +24,16 @@ export function registerImportCommands(program: Command): void {
     .option("--commit <sha>", "Commit SHA")
     .option("--branch <branch>", "Branch name")
     .option("--source <source>", "Workflow run source: ci or local", "local")
-    .action(async (file: string | undefined, opts: { adapter?: string; customCommand?: string; commit?: string; branch?: string; source?: string }) => {
+    .option("--workflow-name <name>", "Workflow name to attach to the imported run (used by `explain cluster --workflow`)")
+    .option("--lane <lane>", "Lane label to attach to the imported run (e.g. sampled, cohort, interaction; used by `explain cluster --lane`)")
+    .option("--tag <k=v...>", "Repeatable key=value tags attached to the imported run (used by `explain cluster --tag`)", collectTagOption, [] as string[])
+    .action(async (
+      file: string | undefined,
+      opts: {
+        adapter?: string; customCommand?: string; commit?: string; branch?: string; source?: string;
+        workflowName?: string; lane?: string; tag?: string[];
+      },
+    ) => {
       if (!file) {
         importCmd.help();
         return;
@@ -40,6 +49,24 @@ export function registerImportCommands(program: Command): void {
         await runImportParquet(file);
         return;
       }
+      let tags: Record<string, string> | undefined;
+      if (opts.tag && opts.tag.length > 0) {
+        tags = {};
+        for (const raw of opts.tag) {
+          const eq = raw.indexOf("=");
+          if (eq <= 0) {
+            process.stderr.write(`error: --tag value must be key=value, got "${raw}"\n`);
+            process.exit(2);
+          }
+          const key = raw.slice(0, eq).trim();
+          const value = raw.slice(eq + 1);
+          if (!key) {
+            process.stderr.write(`error: --tag key must be non-empty, got "${raw}"\n`);
+            process.exit(2);
+          }
+          tags[key] = value;
+        }
+      }
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
@@ -53,6 +80,9 @@ export function registerImportCommands(program: Command): void {
           branch: opts.branch,
           repo: `${config.repo.owner}/${config.repo.name}`,
           source: parseWorkflowRunSource(opts.source),
+          workflowName: opts.workflowName,
+          lane: opts.lane,
+          tags,
         });
         console.log(`Imported ${result.testsImported} test results`);
       } finally {
@@ -60,4 +90,8 @@ export function registerImportCommands(program: Command): void {
       }
     });
 
+}
+
+function collectTagOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }

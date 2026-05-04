@@ -217,6 +217,28 @@ describe("import command", () => {
     expect(rows[0].cnt).toBe(result.testsImported);
   });
 
+  it("attaches workflowName, lane, and tags to the imported run (#74)", async () => {
+    const fixture = resolve(import.meta.dirname, "../fixtures/playwright-report.json");
+    await runImport({
+      store,
+      filePath: fixture,
+      adapterType: "playwright",
+      commitSha: "wflane123",
+      branch: "main",
+      repo: "mizchi/crater",
+      workflowName: "smoke",
+      lane: "sampled",
+      tags: { suite: "smoke", owner: "platform" },
+    });
+    const runs = await store.raw<{ workflow_name: string | null; lane: string | null; tags: string | null }>(
+      "SELECT workflow_name, lane, tags FROM workflow_runs",
+    );
+    expect(runs).toHaveLength(1);
+    expect(runs[0].workflow_name).toBe("smoke");
+    expect(runs[0].lane).toBe("sampled");
+    expect(JSON.parse(runs[0].tags ?? "null")).toEqual({ suite: "smoke", owner: "platform" });
+  });
+
   it("requires a custom command when adapterType is custom", async () => {
     const fixture = resolve(import.meta.dirname, "../fixtures/playwright-report.json");
 

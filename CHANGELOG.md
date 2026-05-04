@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `flaker explain cluster --workflow <name> | --lane <name> | --tag k=v` (#74). Co-failure clustering can now be narrowed to a specific GitHub Actions workflow, lane, or arbitrary tag, reducing the same-batch / same-workflow bias that inflates clusters when tests are always observed together in fixed cohorts. Three new optional columns on `workflow_runs` (`workflow_name`, `lane`, `tags JSON`) are populated automatically from the GitHub API at `flaker apply --target collect_ci` time. A new optional `[workflow_lanes]` map in `flaker.toml` resolves `workflow_name → lane`. `flaker import` gains symmetric `--workflow-name <name>`, `--lane <name>`, and repeatable `--tag k=v` flags so locally-imported reports can also be tagged. Filters are AND-combined; backwards compatible (no filter = previous behaviour).
+
 ## 0.12.0
 
 Minor release — `feat:` change ships a new public surface for `flaker explain cluster` plus a follow-up audit that closes the JST/UTC drift class in CURRENT_TIMESTAMP-based queries (issue #64).

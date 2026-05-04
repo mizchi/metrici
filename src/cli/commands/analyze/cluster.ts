@@ -9,6 +9,11 @@ export interface FailureClusterOpts {
   top?: number;
   /** Reference time for the window cutoff. Defaults to `new Date()`. */
   now?: Date;
+  /**
+   * Workflow filter applied to the underlying co-failure query (#74).
+   * Reduces same-batch / same-workflow co-failure bias.
+   */
+  workflow?: { name?: string; lane?: string; tags?: Record<string, string> };
 }
 
 export async function runFailureClusters(
@@ -20,6 +25,7 @@ export async function runFailureClusters(
     minCoFailures: opts.minCoFailures ?? defaults.minCoFailures,
     minCoRate: opts.minCoRate ?? defaults.minCoRate,
     ...(opts.now ? { now: opts.now } : {}),
+    ...(opts.workflow ? { workflow: opts.workflow } : {}),
   });
   const clusters = buildFailureClusters(pairs);
   return opts.top != null ? clusters.slice(0, opts.top) : clusters;

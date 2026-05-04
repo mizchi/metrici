@@ -61,6 +61,12 @@ export interface FlakerConfig {
   repo: { owner: string; name: string };
   storage: { path: string };
   collect?: { workflow_paths?: string[] };
+  /**
+   * Optional GitHub-Actions workflow-name → lane mapping. Applied at collect/import
+   * time so `flaker explain cluster --lane <name>` can filter by lane afterwards.
+   * Example: { "cohort-regression-test" = "cohort", "ci.yml" = "sampled" }
+   */
+  workflow_lanes?: Record<string, string>;
   adapter: { type: string; command?: string; artifact_name?: string };
   runner: {
     type: string;

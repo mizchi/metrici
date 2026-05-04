@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { SCHEMA_DDL, FLAKY_QUERY, CO_FAILURE_QUERY, TEST_CO_FAILURE_QUERY } from "./schema.js";
+import { SCHEMA_DDL, FLAKY_QUERY, CO_FAILURE_QUERY, buildTestCoFailureQuery } from "./schema.js";
 import { createStableTestId, resolveTestIdentity } from "../identity.js";
 import type {
   MetricStore,
@@ -90,8 +90,8 @@ export class DuckDBStore implements MetricStore {
 
   async insertWorkflowRun(run: WorkflowRun): Promise<void> {
     await this.run(
-      `INSERT INTO workflow_runs (id, repo, branch, commit_sha, event, source, status, created_at, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO workflow_runs (id, repo, branch, commit_sha, event, source, status, created_at, duration_ms, workflow_name, lane, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO NOTHING`,
       [
         run.id,
@@ -103,6 +103,9 @@ export class DuckDBStore implements MetricStore {
         run.status,
         run.createdAt,
         run.durationMs,
+        run.workflowName ?? null,
+        run.lane ?? null,
+        run.tags ? JSON.stringify(run.tags) : null,
       ]
     );
   }
@@ -544,9 +547,10 @@ export class DuckDBStore implements MetricStore {
     const now = opts?.now ?? new Date();
     const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
     const cutoffLiteral = cutoff.toISOString().replace("T", " ").replace("Z", "");
+    const { sql, extraParams } = buildTestCoFailureQuery({ workflow: opts?.workflow });
     const rows = await this.all(
-      TEST_CO_FAILURE_QUERY,
-      [cutoffLiteral, minCoFailures, minCoRate],
+      sql,
+      [cutoffLiteral, ...extraParams, minCoFailures, minCoRate],
     );
     return rows.map((row: any) => ({
       testAId: row.test_a_id,

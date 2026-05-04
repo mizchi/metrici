@@ -15,6 +15,7 @@ export interface GitHubClient {
     total_count: number;
     workflow_runs: Array<{
       id: number;
+      name?: string;
       path?: string;
       status?: string;
       head_branch: string;
@@ -48,6 +49,12 @@ export interface CollectOpts {
   customCommand?: string;
   storagePath?: string;
   workflowPaths?: string[];
+  /**
+   * Optional GitHub-Actions workflow-name → lane mapping. Sourced from
+   * flaker.toml `[workflow_lanes]`. Looked up by `run.name` (preferred) and
+   * falls back to the workflow path.
+   */
+  workflowLanes?: Record<string, string>;
 }
 
 export interface CollectFailure {
@@ -167,6 +174,12 @@ export async function collectWorkflowRuns(
 
   const adapter = getAdapter(adapterType, customCommand);
   const { workflow_runs } = await github.listWorkflowRuns();
+  const workflowLanes = opts.workflowLanes ?? {};
+  const resolveLane = (name?: string | null, path?: string | null): string | null => {
+    if (name && workflowLanes[name]) return workflowLanes[name];
+    if (path && workflowLanes[path]) return workflowLanes[path];
+    return null;
+  };
 
   let runsCollected = 0;
   let testsCollected = 0;
@@ -207,6 +220,8 @@ export async function collectWorkflowRuns(
       status: run.conclusion,
       createdAt: new Date(run.created_at),
       durationMs,
+      workflowName: run.name ?? null,
+      lane: resolveLane(run.name, run.path),
     };
 
     await store.insertWorkflowRun(workflowRun);
@@ -384,6 +399,7 @@ export async function runCollectCi(opts: RunCollectCiOpts): Promise<RunCollectCi
         total_count: response.data.total_count,
         workflow_runs: response.data.workflow_runs.map((run) => ({
           id: run.id,
+          name: run.name ?? undefined,
           path: (run as { path?: string }).path,
           status: run.status ?? undefined,
           head_branch: run.head_branch ?? "",
@@ -433,6 +449,7 @@ export async function runCollectCi(opts: RunCollectCiOpts): Promise<RunCollectCi
     customCommand: config.adapter.command,
     storagePath: config.storage.path,
     workflowPaths: config.collect?.workflow_paths,
+    workflowLanes: config.workflow_lanes,
   });
 
   const exitCode = resolveCollectExitCode(result, { failOnErrors });

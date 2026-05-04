@@ -15,6 +15,12 @@ export interface WorkflowRun {
   status: string | null;
   createdAt: Date;
   durationMs: number | null;
+  /** GitHub Actions workflow name, or adapter-supplied workflow identifier. */
+  workflowName?: string | null;
+  /** Coarse lane classifier (e.g. `sampled`, `cohort`, `interaction`, `full-batch`). */
+  lane?: string | null;
+  /** Arbitrary key-value metadata attached to the run. */
+  tags?: Record<string, string> | null;
 }
 
 export interface TestResult {
@@ -197,6 +203,17 @@ export interface TestCoFailureQueryOpts {
   minCoRate?: number;
   /** Reference time for the window cutoff. Defaults to `new Date()`. */
   now?: Date;
+  /**
+   * Optional workflow filter applied to the underlying test_results → workflow_runs join.
+   * All conditions are AND-combined. Used by `flaker explain cluster --lane / --workflow / --tag`
+   * to reduce same-batch / same-workflow co-failure bias (#74).
+   */
+  workflow?: {
+    name?: string;
+    lane?: string;
+    /** Tag matches `tags[key] = value`. Multiple tags AND-combined. */
+    tags?: Record<string, string>;
+  };
 }
 
 export interface ExportResult {
