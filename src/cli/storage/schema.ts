@@ -1,3 +1,5 @@
+import { validateTagKey } from "../workflow-filter.js";
+
 export const SCHEMA_DDL = `
 CREATE TABLE IF NOT EXISTS workflow_runs (
   id            BIGINT PRIMARY KEY,
@@ -156,69 +158,6 @@ HAVING co_runs >= ? AND co_failures > 0
 ORDER BY co_failure_rate DESC
 `;
 
-/**
- * Build the TEST_CO_FAILURE query, optionally narrowing the `failed_results`
- * CTE to a workflow lane / name / tag set so callers can avoid same-batch bias.
- *
- * Returns `{ sql, extraParams }`. Callers prepend `[cutoffLiteral, ...extraParams,
- * minCoFailures, minCoRate]` to keep the original positional ordering.
- *
- * `tags` is rendered inline because DuckDB's parameterised `json_extract` is
- * awkward — keys/values are validated at the CLI layer (alnum + `_-./`) so the
- * inline path is safe.
- */
-export function buildTestCoFailureQuery(filter?: {
-  workflow?: { name?: string; lane?: string; tags?: Record<string, string> };
-}): { sql: string; extraParams: unknown[] } {
-  const wf = filter?.workflow;
-  const hasWorkflowFilter = !!wf && (wf.name != null || wf.lane != null || (wf.tags && Object.keys(wf.tags).length > 0));
-  const extraParams: unknown[] = [];
-  let workflowJoin = "";
-  let workflowWhere = "";
-  if (hasWorkflowFilter) {
-    workflowJoin = "JOIN workflow_runs wr ON wr.id = tr.workflow_run_id";
-    const conds: string[] = [];
-    if (wf!.name != null) {
-      conds.push("wr.workflow_name = ?");
-      extraParams.push(wf!.name);
-    }
-    if (wf!.lane != null) {
-      conds.push("wr.lane = ?");
-      extraParams.push(wf!.lane);
-    }
-    if (wf!.tags) {
-      for (const [k, v] of Object.entries(wf!.tags)) {
-        if (!/^[A-Za-z0-9_\-./]+$/.test(k)) {
-          throw new Error(`tag key contains unsupported characters: ${JSON.stringify(k)}`);
-        }
-        conds.push(`json_extract_string(wr.tags, '$.${k}') = ?`);
-        extraParams.push(v);
-      }
-    }
-    workflowWhere = "AND " + conds.join(" AND ");
-  }
-  const sql = `
-WITH failed_results AS (
-  SELECT DISTINCT
-    tr.workflow_run_id,
-    COALESCE(tr.test_id, '') AS test_id,
-    COALESCE(tr.task_id, tr.suite) AS task_id,
-    tr.suite,
-    tr.test_name,
-    tr.filter_text
-  FROM test_results tr
-  ${workflowJoin}
-  WHERE tr.created_at > ?::TIMESTAMP
-    AND (
-      tr.status IN ('failed', 'flaky')
-      OR (tr.retry_count > 0 AND tr.status = 'passed')
-    )
-    ${workflowWhere}
-),
-${TEST_CO_FAILURE_QUERY_TAIL}`;
-  return { sql, extraParams };
-}
-
 const TEST_CO_FAILURE_QUERY_TAIL = `
 fail_counts AS (
   SELECT
@@ -287,6 +226,69 @@ ORDER BY
   pairs.test_a_suite ASC,
   pairs.test_b_suite ASC
 `;
+
+/**
+ * Build the TEST_CO_FAILURE query, optionally narrowing the `failed_results`
+ * CTE to a workflow lane / name / tag set so callers can avoid same-batch bias.
+ *
+ * Returns `{ sql, extraParams }`. Callers prepend `[cutoffLiteral, ...extraParams,
+ * minCoFailures, minCoRate]` to keep the original positional ordering.
+ *
+ * `tags` is rendered inline because DuckDB's parameterised `json_extract` is
+ * awkward — keys are validated against `TAG_KEY_PATTERN` (alnum + `_-./`) via
+ * `validateTagKey` so the inline path is safe; values stay parameterised.
+ */
+export function buildTestCoFailureQuery(filter?: {
+  workflow?: { name?: string; lane?: string; tags?: Record<string, string> };
+}): { sql: string; extraParams: unknown[] } {
+  const wf = filter?.workflow;
+  const hasWorkflowFilter = !!wf && (wf.name != null || wf.lane != null || (wf.tags && Object.keys(wf.tags).length > 0));
+  const extraParams: unknown[] = [];
+  let workflowJoin = "";
+  let workflowWhere = "";
+  if (hasWorkflowFilter) {
+    workflowJoin = "JOIN workflow_runs wr ON wr.id = tr.workflow_run_id";
+    const conds: string[] = [];
+    if (wf!.name != null) {
+      conds.push("wr.workflow_name = ?");
+      extraParams.push(wf!.name);
+    }
+    if (wf!.lane != null) {
+      conds.push("wr.lane = ?");
+      extraParams.push(wf!.lane);
+    }
+    if (wf!.tags) {
+      for (const [k, v] of Object.entries(wf!.tags)) {
+        validateTagKey(k);
+        conds.push(`json_extract_string(wr.tags, '$.${k}') = ?`);
+        extraParams.push(v);
+      }
+    }
+    workflowWhere = "AND " + conds.join(" AND ");
+  }
+  return {
+    sql: `
+WITH failed_results AS (
+  SELECT DISTINCT
+    tr.workflow_run_id,
+    COALESCE(tr.test_id, '') AS test_id,
+    COALESCE(tr.task_id, tr.suite) AS task_id,
+    tr.suite,
+    tr.test_name,
+    tr.filter_text
+  FROM test_results tr
+  ${workflowJoin}
+  WHERE tr.created_at > ?::TIMESTAMP
+    AND (
+      tr.status IN ('failed', 'flaky')
+      OR (tr.retry_count > 0 AND tr.status = 'passed')
+    )
+    ${workflowWhere}
+),
+${TEST_CO_FAILURE_QUERY_TAIL}`,
+    extraParams,
+  };
+}
 
 export const FLAKY_QUERY = `
 WITH recent AS (

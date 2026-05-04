@@ -17,6 +17,7 @@ import {
   runStatusListQuarantined,
 } from "../commands/status/summary.js";
 import { type GateName, VALID_GATE_NAMES } from "../gate.js";
+import { parseTagOption, WorkflowFilterError } from "../workflow-filter.js";
 
 export async function analyzeKpiAction(opts: { windowDays: string; json?: boolean }): Promise<void> {
   const config = loadConfig(process.cwd());
@@ -172,33 +173,22 @@ function parseWorkflowFilterOptions(opts: {
   lane?: string;
   tag?: string[];
 }): { name?: string; lane?: string; tags?: Record<string, string> } | undefined {
-  const tags: Record<string, string> = {};
-  if (opts.tag) {
-    for (const raw of opts.tag) {
-      const eq = raw.indexOf("=");
-      if (eq <= 0) {
-        console.error(`Error: --tag value must be key=value, got "${raw}"`);
-        process.exit(2);
-      }
-      const key = raw.slice(0, eq).trim();
-      const value = raw.slice(eq + 1);
-      if (!key) {
-        console.error(`Error: --tag key must be non-empty, got "${raw}"`);
-        process.exit(2);
-      }
-      if (!/^[A-Za-z0-9_\-./]+$/.test(key)) {
-        console.error(`Error: --tag key contains unsupported characters: "${key}". Allowed: alphanumeric, _ - . /`);
-        process.exit(2);
-      }
-      tags[key] = value;
+  let tags: Record<string, string> | undefined;
+  try {
+    tags = parseTagOption(opts.tag);
+  } catch (err) {
+    if (err instanceof WorkflowFilterError) {
+      console.error(`Error: ${err.message}`);
+      process.exit(2);
     }
+    throw err;
   }
-  const hasAny = opts.workflow != null || opts.lane != null || Object.keys(tags).length > 0;
+  const hasAny = opts.workflow != null || opts.lane != null || (tags && Object.keys(tags).length > 0);
   if (!hasAny) return undefined;
   return {
     ...(opts.workflow ? { name: opts.workflow } : {}),
     ...(opts.lane ? { lane: opts.lane } : {}),
-    ...(Object.keys(tags).length > 0 ? { tags } : {}),
+    ...(tags ? { tags } : {}),
   };
 }
 

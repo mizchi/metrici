@@ -5,6 +5,7 @@ import { loadConfig } from "../config.js";
 import { runImport } from "../commands/import/report.js";
 import { runImportParquet } from "../commands/import/parquet.js";
 import { parseWorkflowRunSource } from "../run-source.js";
+import { parseTagOption, WorkflowFilterError } from "../workflow-filter.js";
 
 export function detectAdapter(filePath: string): string | undefined {
   const lower = filePath.toLowerCase();
@@ -50,22 +51,14 @@ export function registerImportCommands(program: Command): void {
         return;
       }
       let tags: Record<string, string> | undefined;
-      if (opts.tag && opts.tag.length > 0) {
-        tags = {};
-        for (const raw of opts.tag) {
-          const eq = raw.indexOf("=");
-          if (eq <= 0) {
-            process.stderr.write(`error: --tag value must be key=value, got "${raw}"\n`);
-            process.exit(2);
-          }
-          const key = raw.slice(0, eq).trim();
-          const value = raw.slice(eq + 1);
-          if (!key) {
-            process.stderr.write(`error: --tag key must be non-empty, got "${raw}"\n`);
-            process.exit(2);
-          }
-          tags[key] = value;
+      try {
+        tags = parseTagOption(opts.tag);
+      } catch (err) {
+        if (err instanceof WorkflowFilterError) {
+          process.stderr.write(`error: ${err.message}\n`);
+          process.exit(2);
         }
+        throw err;
       }
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
