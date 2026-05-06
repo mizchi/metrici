@@ -51,6 +51,8 @@ jobs:
           tests/reporting/*.test.ts
           tests/commands/collect.test.ts
           tests/storage/duckdb.test.ts
+          tests/commands/ops-*.test.ts
+          tests/commands/flaky-tag-triage.test.ts
 
       - name: Install DuckDB C library
         run: |
