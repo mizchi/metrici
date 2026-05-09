@@ -20,9 +20,9 @@ function makeRow(
     file: "tests/example.test.ts",
     title: "works",
     titlePath: ["Example Suite", "works"],
-    identityKey: "{\"spec\":\"tests/example.test.ts\",\"suite\":\"Example Suite\",\"testName\":\"works\",\"titlePath\":[\"works\"],\"variant\":{\"project\":\"chromium\"}}",
+    identityKey: '{"spec":"tests/example.test.ts","suite":"Example Suite","testName":"works","titlePath":["works"],"variant":{"project":"chromium"}}',
     identity: {
-      key: "{\"spec\":\"tests/example.test.ts\",\"suite\":\"Example Suite\",\"testName\":\"works\",\"titlePath\":[\"works\"],\"variant\":{\"project\":\"chromium\"}}",
+      key: '{"spec":"tests/example.test.ts","suite":"Example Suite","testName":"works","titlePath":["works"],"variant":{"project":"chromium"}}',
       suite: "Example Suite",
       testName: "works",
       spec: "tests/example.test.ts",
@@ -60,7 +60,7 @@ describe("buildStablePlaywrightIdentity", () => {
       shard: "2/4",
     });
     expect(identity.key).toBe(
-      "{\"spec\":\"tests/example.test.ts\",\"suite\":\"Example Suite\",\"testName\":\"works\",\"titlePath\":[\"works\"],\"variant\":{\"browser\":\"chromium\",\"shard\":\"2/4\"}}",
+      '{"spec":"tests/example.test.ts","suite":"Example Suite","testName":"works","titlePath":["works"],"variant":{"browser":"chromium","shard":"2/4"}}',
     );
   });
 });
@@ -68,7 +68,7 @@ describe("buildStablePlaywrightIdentity", () => {
 describe("resolvePlaywrightTestIdentityKey", () => {
   it("prefers identityKey, then stable identity key, then row id", () => {
     expect(resolvePlaywrightTestIdentityKey(makeRow("passed"))).toBe(
-      "{\"spec\":\"tests/example.test.ts\",\"suite\":\"Example Suite\",\"testName\":\"works\",\"titlePath\":[\"works\"],\"variant\":{\"project\":\"chromium\"}}",
+      '{"spec":"tests/example.test.ts","suite":"Example Suite","testName":"works","titlePath":["works"],"variant":{"project":"chromium"}}',
     );
     expect(
       resolvePlaywrightTestIdentityKey(
@@ -77,7 +77,7 @@ describe("resolvePlaywrightTestIdentityKey", () => {
         }),
       ),
     ).toBe(
-      "{\"spec\":\"tests/example.test.ts\",\"suite\":\"Example Suite\",\"testName\":\"works\",\"titlePath\":[\"works\"],\"variant\":{\"project\":\"chromium\"}}",
+      '{"spec":"tests/example.test.ts","suite":"Example Suite","testName":"works","titlePath":["works"],"variant":{"project":"chromium"}}',
     );
     expect(
       resolvePlaywrightTestIdentityKey(
