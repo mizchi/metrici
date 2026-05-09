@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/flaker",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "Flaky test detection, sampling, and test runner orchestration",
   "type": "module",
   "bin": {
@@ -34,6 +34,10 @@
     "./reporting/flaker-batch-summary-core": {
       "types": "./dist/cli/reporting/flaker-batch-summary-core.d.ts",
       "default": "./dist/cli/reporting/flaker-batch-summary-core.js"
+    },
+    "./reporting/flaker-batch-plan-core": {
+      "types": "./dist/cli/reporting/flaker-batch-plan-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-batch-plan-core.js"
     },
     "./reporting/flaker-config-contract": {
       "types": "./dist/cli/reporting/flaker-config-contract.d.ts",
