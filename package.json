@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/flaker",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "description": "Flaky test detection, sampling, and test runner orchestration",
   "type": "module",
   "bin": {
@@ -38,6 +38,34 @@
     "./reporting/flaker-batch-plan-core": {
       "types": "./dist/cli/reporting/flaker-batch-plan-core.d.ts",
       "default": "./dist/cli/reporting/flaker-batch-plan-core.js"
+    },
+    "./reporting/flaker-issue-contract": {
+      "types": "./dist/cli/reporting/flaker-issue-contract.d.ts",
+      "default": "./dist/cli/reporting/flaker-issue-contract.js"
+    },
+    "./reporting/flaker-quarantine-contract": {
+      "types": "./dist/cli/reporting/flaker-quarantine-contract.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-contract.js"
+    },
+    "./reporting/flaker-quarantine-parser": {
+      "types": "./dist/cli/reporting/flaker-quarantine-parser.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-parser.js"
+    },
+    "./reporting/flaker-quarantine-match": {
+      "types": "./dist/cli/reporting/flaker-quarantine-match.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-match.js"
+    },
+    "./reporting/flaker-quarantine-expiry": {
+      "types": "./dist/cli/reporting/flaker-quarantine-expiry.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-expiry.js"
+    },
+    "./reporting/flaker-quarantine-summary-core": {
+      "types": "./dist/cli/reporting/flaker-quarantine-summary-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-summary-core.js"
+    },
+    "./reporting/flaker-quarantine-report": {
+      "types": "./dist/cli/reporting/flaker-quarantine-report.d.ts",
+      "default": "./dist/cli/reporting/flaker-quarantine-report.js"
     },
     "./reporting/flaker-config-contract": {
       "types": "./dist/cli/reporting/flaker-config-contract.d.ts",
